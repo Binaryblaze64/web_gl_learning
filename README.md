@@ -8,6 +8,17 @@ self-contained tutorial you can read top-to-bottom.
 
 > Everything here is plain WebGL 1 + GLSL. Just open the HTML files in a browser.
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/img/cube-mvp.png" alt="Rotating vertex-colored cube with live matrix debug panel" /></td>
+    <td width="50%"><img src="docs/img/cube-lighting.png" alt="Lit cube with an orbiting light and ambient/diffuse/specular shading" /></td>
+  </tr>
+  <tr>
+    <td align="center"><code>webgl-cube-mvp.html</code> — the MVP matrix pipeline</td>
+    <td align="center"><code>cube_lighting.html</code> — the lighting model</td>
+  </tr>
+</table>
+
 ## What's inside
 
 | File | What it demonstrates |
