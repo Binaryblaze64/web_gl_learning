@@ -510,74 +510,182 @@ function makeCover(game) {
    ============================================================================ */
 const app = document.getElementById("app");
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x05060a);
-scene.fog = new THREE.FogExp2(0x05060a, 0.020);
+scene.background = new THREE.Color(0xbfe6ff);
+scene.fog = new THREE.FogExp2(0xbfe6ff, 0.0095);
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 400);
-const OVERVIEW = { pos: new THREE.Vector3(0, 9, 34), tgt: new THREE.Vector3(0, 3.2, 0) };
+const OVERVIEW = { pos: new THREE.Vector3(0, 21, 52), tgt: new THREE.Vector3(0, 2.5, 0) };
 camera.position.copy(OVERVIEW.pos);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 app.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = 0.06;
 controls.target.copy(OVERVIEW.tgt);
-controls.minDistance = 10; controls.maxDistance = 70;
-controls.minPolarAngle = 0.25; controls.maxPolarAngle = Math.PI / 2 - 0.04;
+controls.minDistance = 10; controls.maxDistance = 95;
+controls.minPolarAngle = 0.12; controls.maxPolarAngle = Math.PI / 2 - 0.03;
 controls.autoRotate = true; controls.autoRotateSpeed = 0.5;
 
-// lights
-scene.add(new THREE.AmbientLight(0x2a3658, 0.7));
-const hemi = new THREE.HemisphereLight(0x88aaff, 0x10131e, 0.5); scene.add(hemi);
-const key = new THREE.DirectionalLight(0xbcd2ff, 0.5); key.position.set(8, 20, 10); scene.add(key);
+// daylight: soft ambient + sky/ground hemisphere + a warm directional "sun"
+scene.add(new THREE.AmbientLight(0xb9d4ff, 0.55));
+scene.add(new THREE.HemisphereLight(0xcfeaff, 0x5f7d3a, 0.75));
+const SUN_DIR = new THREE.Vector3(40, 58, 22);
+const sunLight = new THREE.DirectionalLight(0xfff3d0, 1.15); sunLight.position.copy(SUN_DIR); scene.add(sunLight);
 
-// neon grid floor
-const grid = new THREE.GridHelper(160, 80, 0x4f7bd6, 0x1c2746);
-grid.material.transparent = true; grid.material.opacity = 0.55; grid.position.y = 0.02;
-scene.add(grid);
-const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(80, 64),
-  new THREE.MeshStandardMaterial({ color: 0x070a12, roughness: 0.45, metalness: 0.6 })
-);
-floor.rotation.x = -Math.PI / 2; scene.add(floor);
+/* ---------------------------------------------------------------------------
+   MINECRAFT BLOCK WORLD — a bright sky, a floating voxel island, trees,
+   drifting blocky clouds and a central beacon. Inspired by the Minecraft-folio
+   style (Andrew Woan / JReyes). Everything is built from cubes.
+   --------------------------------------------------------------------------- */
+const RING = 18; // radius of the exhibit ring (shared by the world + the gallery)
+const B = 1.4;   // block size in world units
 
-// starfield
-(() => {
-  const N = 1200, pos = new Float32Array(N * 3);
-  for (let i = 0; i < N; i++) {
-    const r = 90 + Math.random() * 120, t = Math.random() * Math.PI * 2, p = Math.acos(2 * Math.random() - 1);
-    pos[i*3] = r * Math.sin(p) * Math.cos(t);
-    pos[i*3+1] = Math.abs(r * Math.cos(p)) * 0.6 + 4;
-    pos[i*3+2] = r * Math.sin(p) * Math.sin(t);
+// 16x16 pixel-art texture factory (nearest-filtered so blocks stay crisp)
+function pixelTex(base, spots, opts = {}) {
+  const S = 16, cv = document.createElement("canvas"); cv.width = cv.height = S;
+  const x = cv.getContext("2d");
+  x.fillStyle = base; x.fillRect(0, 0, S, S);
+  for (let i = 0; i < (opts.density || 38); i++) {
+    x.fillStyle = spots[(Math.random() * spots.length) | 0];
+    x.fillRect((Math.random()*S)|0, (Math.random()*S)|0, 1, 1);
   }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x9fb6e6, size: 0.6, transparent: true, opacity: 0.8 })));
-})();
+  if (opts.draw) opts.draw(x, S);
+  const t = new THREE.CanvasTexture(cv);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const TEX = {
+  grassTop: pixelTex("#5fa83a", ["#6cbf45", "#4f9230", "#74c94e"]),
+  dirt:     pixelTex("#7a5230", ["#6b4527", "#895c36", "#5e3d22"]),
+  stone:    pixelTex("#8a8d92", ["#7c7f84", "#9aa0a6", "#6f7277"]),
+  wood:     pixelTex("#6e4a22", ["#5c3d1c", "#7e5628"], { draw:(x,S)=>{ x.fillStyle="#5c3d1c"; for(let i=2;i<S;i+=5) x.fillRect(i,0,1,S);} }),
+  leaves:   pixelTex("#3f8f33", ["#357a2b", "#4aa33b", "#2e6b25"], { density: 64 }),
+  grassSide:pixelTex("#7a5230", ["#6b4527","#895c36"], { draw:(x,S)=>{ x.fillStyle="#5fa83a"; x.fillRect(0,0,S,4); for(let i=0;i<10;i++){x.fillStyle="#4f9230";x.fillRect((Math.random()*S)|0,(Math.random()*4)|0,1,1);} } }),
+};
+const lam = (map) => new THREE.MeshLambertMaterial({ map });
+// BoxGeometry face order: +x, -x, +y(top), -y(bottom), +z, -z
+const grassMats = [lam(TEX.grassSide), lam(TEX.grassSide), lam(TEX.grassTop), lam(TEX.dirt), lam(TEX.grassSide), lam(TEX.grassSide)];
+const dirtMat = lam(TEX.dirt), stoneMat = lam(TEX.stone), woodMat = lam(TEX.wood), leafMat = lam(TEX.leaves);
 
-// glowing central core (decorative hub the exhibits face away from)
-const core = new THREE.Mesh(
-  new THREE.IcosahedronGeometry(2.2, 1),
-  new THREE.MeshBasicMaterial({ color: 0x6fa8ff, wireframe: true })
+// gradient sky dome
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(220, 32, 16),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color(0x3f86d6) }, bot: { value: new THREE.Color(0xdaf0ff) } },
+    vertexShader: `varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);} `,
+    fragmentShader: `varying float h; uniform vec3 top; uniform vec3 bot; void main(){ gl_FragColor = vec4(mix(bot, top, clamp(h*1.1+0.12,0.0,1.0)), 1.0);} `,
+  })
 );
-core.position.set(0, 6.5, 0); scene.add(core);
-const coreGlow = new THREE.Mesh(
-  new THREE.IcosahedronGeometry(1.2, 0),
-  new THREE.MeshBasicMaterial({ color: 0x244a8c })
+scene.add(sky);
+
+// blocky sun
+const sunMesh = new THREE.Mesh(new THREE.BoxGeometry(13,13,13), new THREE.MeshBasicMaterial({ color: 0xfff4c2, fog: false }));
+sunMesh.position.copy(SUN_DIR).multiplyScalar(2.6); scene.add(sunMesh);
+
+const boxGeo = new THREE.BoxGeometry(B, B, B);
+
+// ---- generate the floating voxel island ----
+const RING_BLOCKS = Math.round((RING + 3) / B);  // flat plaza radius (blocks)
+const ISLAND_R = 30;                              // island radius (blocks)
+function hash(x, z){ const s = Math.sin(x*127.1 + z*311.7) * 43758.5453; return s - Math.floor(s); }
+function noise(x, z){
+  const xi=Math.floor(x), zi=Math.floor(z), xf=x-xi, zf=z-zi;
+  const u=xf*xf*(3-2*xf), v=zf*zf*(3-2*zf);
+  const a=hash(xi,zi), b=hash(xi+1,zi), c=hash(xi,zi+1), d=hash(xi+1,zi+1);
+  return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v;
+}
+const grassXf=[], dirtXf=[], stoneXf=[], woodXf=[], leafXf=[];
+const dummy = new THREE.Object3D();
+function pushBlock(arr, bx, by, bz){
+  dummy.position.set(bx*B, by*B - B/2, bz*B);
+  dummy.updateMatrix(); arr.push(dummy.matrix.clone());
+}
+const heightAt = new Map();
+for (let bx=-ISLAND_R; bx<=ISLAND_R; bx++) for (let bz=-ISLAND_R; bz<=ISLAND_R; bz++){
+  const dist = Math.hypot(bx, bz);
+  if (dist > ISLAND_R) continue;
+  const d = dist / ISLAND_R;
+  let top = 0;
+  if (dist > RING_BLOCKS) {
+    const ramp = Math.min(1, (dist - RING_BLOCKS) / 3);   // ease up out of the plaza
+    top = Math.round(noise(bx*0.16 + 10, bz*0.16 + 10) * 4 * ramp);
+  }
+  heightAt.set(bx + "," + bz, top);
+  const depth = 2 + Math.floor((1 - d) * 9);              // rounded underside (deepest at centre)
+  for (let y = top; y >= top - depth; y--){
+    if (y === top) pushBlock(grassXf, bx, y, bz);
+    else if (y >= top - 3) pushBlock(dirtXf, bx, y, bz);
+    else pushBlock(stoneXf, bx, y, bz);
+  }
+}
+// scatter oak trees on the hills, clear of the exhibit plaza
+let seed = 7;
+const rnd = () => (seed = (seed*9301 + 49297) % 233280) / 233280;
+for (let bx=-ISLAND_R; bx<=ISLAND_R; bx++) for (let bz=-ISLAND_R; bz<=ISLAND_R; bz++){
+  const dist = Math.hypot(bx, bz);
+  if (dist < RING_BLOCKS + 3 || dist > ISLAND_R - 2 || rnd() > 0.035) continue;
+  const base = heightAt.get(bx + "," + bz); if (base === undefined) continue;
+  const th = 3 + (rnd()*2|0);
+  for (let y=base+1; y<=base+th; y++) pushBlock(woodXf, bx, y, bz);
+  const cy = base + th;
+  for (let lx=-2; lx<=2; lx++) for (let lz=-2; lz<=2; lz++) for (let ly=0; ly<=2; ly++){
+    if (Math.abs(lx)===2 && Math.abs(lz)===2) continue;
+    if (ly===2 && (Math.abs(lx)===2 || Math.abs(lz)===2)) continue;
+    if (lx===0 && lz===0 && ly===0) continue;
+    pushBlock(leafXf, bx+lx, cy+ly, bz+lz);
+  }
+}
+function instanced(mats, xfs){
+  const im = new THREE.InstancedMesh(boxGeo, mats, xfs.length);
+  xfs.forEach((m,i)=> im.setMatrixAt(i, m));
+  im.instanceMatrix.needsUpdate = true; im.frustumCulled = false;
+  scene.add(im); return im;
+}
+instanced(grassMats, grassXf);
+instanced(dirtMat, dirtXf);
+instanced(stoneMat, stoneXf);
+instanced(woodMat, woodXf);
+instanced(leafMat, leafXf);
+
+// drifting flat clouds (clusters of stretched white blocks)
+const clouds = [];
+const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+for (let i=0; i<14; i++){
+  const g = new THREE.Group();
+  const n = 4 + (Math.random()*5|0);
+  for (let j=0;j<n;j++){
+    const c = new THREE.Mesh(boxGeo, cloudMat);
+    c.scale.set(1.6 + Math.random()*2.2, 0.7, 1.4 + Math.random()*1.8);
+    c.position.set((Math.random()*8-4)*B, 0, (Math.random()*6-3)*B);
+    g.add(c);
+  }
+  g.position.set((Math.random()*2-1)*130, 24 + Math.random()*12, (Math.random()*2-1)*130);
+  g.userData.speed = 0.7 + Math.random()*0.9;
+  scene.add(g); clouds.push(g);
+}
+
+// central Minecraft beacon (glowing block + translucent beam to the sky)
+const beaconBase = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x6fe0ff, emissive: 0x2aa8d8 }));
+beaconBase.position.set(0, B/2, 0); scene.add(beaconBase);
+const beacon = new THREE.Mesh(
+  new THREE.BoxGeometry(B*0.8, 130, B*0.8),
+  new THREE.MeshBasicMaterial({ color: 0xa8e8ff, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })
 );
-coreGlow.position.copy(core.position); scene.add(coreGlow);
-const coreLight = new THREE.PointLight(0x6fa8ff, 60, 60); coreLight.position.copy(core.position); scene.add(coreLight);
+beacon.position.set(0, 65, 0); scene.add(beacon);
+const beaconLight = new THREE.PointLight(0x9fe6ff, 26, 44); beaconLight.position.set(0, 6, 0); scene.add(beaconLight);
 
 /* ============================================================================
    [5] EXHIBITS — a ring of framed panels on pedestals, facing outward
    ============================================================================ */
-const RING = 18;          // ring radius
-const PW = 3.2, PH = 4.3; // panel width / height
+const PW = 3.2, PH = 4.3; // panel width / height (RING is declared in the world section)
 const exhibits = [];      // { group, panel, light, baseScale }
 const pickables = [];     // meshes the raycaster tests
 const covers = [];        // data-URLs for the HTML card
@@ -592,17 +700,16 @@ function buildExhibits() {
     group.rotation.y = angle;            // +Z of the group now points outward
     scene.add(group);
 
-    // pedestal
-    const ped = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.1, 1.4, 2, 24),
-      new THREE.MeshStandardMaterial({ color: 0x0c1120, roughness: 0.4, metalness: 0.7 })
-    );
-    ped.position.y = 1; group.add(ped);
+    // blocky stone pedestal (two cubes) with a coloured accent slab on top
+    const ped = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1, 2.2), stoneMat);
+    ped.position.y = 0.5; group.add(ped);
+    const ped2 = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1, 1.7), stoneMat);
+    ped2.position.y = 1.5; group.add(ped2);
     const pedRim = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.15, 1.15, 0.18, 24),
+      new THREE.BoxGeometry(1.8, 0.22, 1.8),
       new THREE.MeshBasicMaterial({ color: new THREE.Color(game.a) })
     );
-    pedRim.position.y = 2.0; group.add(pedRim);
+    pedRim.position.y = 2.1; group.add(pedRim);
 
     // panel sub-group (this is what bobs / scales on hover)
     const panel = new THREE.Group(); panel.position.y = 4.5; group.add(panel);
@@ -639,7 +746,7 @@ function buildExhibits() {
    ============================================================================ */
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.65, 0.55, 0.78);
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.32, 0.45, 0.86);
 composer.addPass(bloom);
 
 /* ============================================================================
@@ -770,9 +877,11 @@ function animate() {
     e.frame.material.emissiveIntensity = 0.6 + e.hover * 1.4;
   });
 
-  core.rotation.y += dt * 0.25; core.rotation.x += dt * 0.12;
-  coreGlow.rotation.y -= dt * 0.4;
-  coreLight.intensity = 55 + Math.sin(t * 1.5) * 12;
+  // drifting clouds + pulsing beacon
+  clouds.forEach(g => { g.position.x += dt * g.userData.speed; if (g.position.x > 140) g.position.x = -140; });
+  beacon.material.opacity = 0.28 + Math.sin(t * 2) * 0.07;
+  beaconBase.rotation.y += dt * 0.6;
+  beaconLight.intensity = 24 + Math.sin(t * 1.6) * 8;
 
   controls.update();
   composer.render();

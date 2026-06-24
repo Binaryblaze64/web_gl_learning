@@ -10,18 +10,19 @@ self-contained and runs in a browser.
 ## ⭐ Featured: Hall of Legends
 
 [**`hall-of-legends.html`**](hall-of-legends.html) — an interactive **3D museum
-of legendary video games**, built with Three.js. Orbit a neon gallery, hover an
-exhibit to make it glow, and click to fly the camera in and read each game's
-story: what it is, who made it, and the year it arrived. 16 legends span five
-decades — from *Pong* (1972) to *Among Us* (2018).
+of legendary video games**, built with Three.js and set on a **floating Minecraft
+voxel island** (inspired by the Minecraft-folio style of Andrew Woan / JReyes).
+Orbit the world, hover an exhibit to highlight it, and click to fly the camera in
+and read each game's story: what it is, who made it, and the year it arrived.
+16 legends span five decades — from *Pong* (1972) to *Among Us* (2018).
 
 <table>
   <tr>
-    <td width="62%"><img src="docs/img/hall-overview.png" alt="A neon 3D gallery: a ring of glowing game exhibits on pedestals around a central core" /></td>
+    <td width="62%"><img src="docs/img/hall-overview.png" alt="A floating Minecraft voxel island ringed with game exhibits on stone pedestals, a beacon beam rising into a bright blocky sky" /></td>
     <td width="38%"><img src="docs/img/hall-detail.png" alt="Flying in to the Pac-Man exhibit with a detail card showing year, genre and description" /></td>
   </tr>
   <tr>
-    <td align="center">Orbit the ring of exhibits</td>
+    <td align="center">A floating voxel island of exhibits</td>
     <td align="center">Click to fly in &amp; read the story</td>
   </tr>
 </table>
@@ -29,9 +30,9 @@ decades — from *Pong* (1972) to *Among Us* (2018).
 **Highlights**
 
 - Pure Three.js loaded via an importmap from a CDN — no `npm install`, no bundler
-- A ring of framed exhibits on glowing pedestals, each facing outward around a rotating core
-- **Procedural cover art** drawn on a `<canvas>` for every game — hand-coded iconic symbols (Pac-Man, the Space Invaders alien, a Tetris stack, a Pokéball, an Among Us crewmate…)
-- `UnrealBloomPass` post-processing for the neon glow, plus fog, a synthwave grid floor, and a starfield
+- A **fully procedural Minecraft world**: a floating island generated from ~20k `InstancedMesh` voxels (grass / dirt / stone with a rounded underside), scattered oak trees, drifting blocky clouds, a gradient sky, a pixel-art sun, and a central beacon beam
+- 16 game exhibits on blocky stone pedestals ringing a flat grass plaza, each with **procedural cover art** drawn on a `<canvas>` — hand-coded iconic symbols (Pac-Man, the Space Invaders alien, a Tetris stack, a Pokéball, an Among Us crewmate…)
+- Pixel-art block textures (nearest-filtered) and per-face Minecraft-style lighting
 - Raycast hover highlighting and smooth eased **camera fly-to** transitions on selection
 - A clickable sidebar index, an HTML detail card, and keyboard control (`Esc` to step back)
 
