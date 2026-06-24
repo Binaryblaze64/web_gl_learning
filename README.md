@@ -1,12 +1,53 @@
-# WebGL Learning
+# WebGL & 3D Graphics Learning
 
-A hands-on, from-scratch exploration of **raw WebGL** — no Three.js, no helper
-libraries, no build step. Every matrix, shader, and lighting term is written out
-by hand and explained in comments so the whole graphics pipeline is visible and
-hackable. This is a personal learning project, but each file doubles as a
-self-contained tutorial you can read top-to-bottom.
+A hands-on journey through real-time 3D on the web — starting from **raw WebGL**
+(every matrix and shader written by hand) and building up to a polished,
+interactive **Three.js** experience. No frameworks, no build step; every file is
+self-contained and runs in a browser.
 
-> Everything here is plain WebGL 1 + GLSL. Just open the HTML files in a browser.
+---
+
+## ⭐ Featured: Hall of Legends
+
+[**`hall-of-legends.html`**](hall-of-legends.html) — an interactive **3D museum
+of legendary video games**, built with Three.js. Orbit a neon gallery, hover an
+exhibit to make it glow, and click to fly the camera in and read each game's
+story: what it is, who made it, and the year it arrived. 16 legends span five
+decades — from *Pong* (1972) to *Among Us* (2018).
+
+<table>
+  <tr>
+    <td width="62%"><img src="docs/img/hall-overview.png" alt="A neon 3D gallery: a ring of glowing game exhibits on pedestals around a central core" /></td>
+    <td width="38%"><img src="docs/img/hall-detail.png" alt="Flying in to the Pac-Man exhibit with a detail card showing year, genre and description" /></td>
+  </tr>
+  <tr>
+    <td align="center">Orbit the ring of exhibits</td>
+    <td align="center">Click to fly in &amp; read the story</td>
+  </tr>
+</table>
+
+**Highlights**
+
+- Pure Three.js loaded via an importmap from a CDN — no `npm install`, no bundler
+- A ring of framed exhibits on glowing pedestals, each facing outward around a rotating core
+- **Procedural cover art** drawn on a `<canvas>` for every game — hand-coded iconic symbols (Pac-Man, the Space Invaders alien, a Tetris stack, a Pokéball, an Among Us crewmate…)
+- `UnrealBloomPass` post-processing for the neon glow, plus fog, a synthwave grid floor, and a starfield
+- Raycast hover highlighting and smooth eased **camera fly-to** transitions on selection
+- A clickable sidebar index, an HTML detail card, and keyboard control (`Esc` to step back)
+
+> ⚠️ Because it imports Three.js as ES modules from a CDN, open it via a local
+> server (e.g. `python -m http.server` then visit
+> `http://localhost:8000/hall-of-legends.html`) rather than double-clicking the file.
+
+---
+
+## The raw-WebGL foundations
+
+Before the Three.js layer, these files build the same ideas **from scratch** —
+no helper libraries — so the whole graphics pipeline is visible and hackable.
+Each one doubles as a tutorial you can read top-to-bottom.
+
+> Plain WebGL 1 + GLSL. Just open the HTML files in a browser.
 
 <table>
   <tr>
