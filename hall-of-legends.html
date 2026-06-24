@@ -199,21 +199,22 @@
 <div id="intro">
   <div class="card panel">
     <h2>WELCOME, TRAVELLER</h2>
-    <p>You're standing in a hall of glowing monuments — each one a video game that
-       changed everything. Wander the ring, choose a legend, and learn what it did
-       and when it began.</p>
+    <p>Ahead of you sits a little Minecraft house on a floating island. Inside, its
+       hallway is lined with the video games that changed everything.</p>
+    <p><b>Scroll</b> to walk through the door and deeper down the hall — a new game
+       poster greets you at every step. Click one to read its story.</p>
     <div class="keys">
-      <span><b>Drag</b> to orbit</span>
-      <span><b>Scroll</b> to zoom</span>
-      <span><b>Click</b> an exhibit</span>
-      <span><b>Esc</b> to step back</span>
+      <span><b>Scroll</b> to walk inside</span>
+      <span><b>Move mouse</b> to look</span>
+      <span><b>Click</b> a poster</span>
+      <span><b>Esc</b> to close a card</span>
     </div>
-    <button id="enter">EXPLORE THE HALL</button>
+    <button id="enter">ENTER THE HOUSE</button>
   </div>
 </div>
 
 <!-- Hint -->
-<div id="hint">Click an exhibit to fly in · <kbd>Esc</kbd> to return</div>
+<div id="hint">Scroll to walk deeper into the house →</div>
 
 <!-- Three.js via importmap (ES modules, no build step) -->
 <script type="importmap">
@@ -227,7 +228,6 @@
 
 <script type="module">
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
@@ -525,12 +525,7 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 app.appendChild(renderer.domElement);
 
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; controls.dampingFactor = 0.06;
-controls.target.copy(OVERVIEW.tgt);
-controls.minDistance = 10; controls.maxDistance = 95;
-controls.minPolarAngle = 0.12; controls.maxPolarAngle = Math.PI / 2 - 0.03;
-controls.autoRotate = true; controls.autoRotateSpeed = 0.5;
+// Navigation is scroll-driven (see the camera path in section [7]); no OrbitControls.
 
 // daylight: soft ambient + sky/ground hemisphere + a warm directional "sun"
 scene.add(new THREE.AmbientLight(0xb9d4ff, 0.55));
@@ -568,11 +563,14 @@ const TEX = {
   wood:     pixelTex("#6e4a22", ["#5c3d1c", "#7e5628"], { draw:(x,S)=>{ x.fillStyle="#5c3d1c"; for(let i=2;i<S;i+=5) x.fillRect(i,0,1,S);} }),
   leaves:   pixelTex("#3f8f33", ["#357a2b", "#4aa33b", "#2e6b25"], { density: 64 }),
   grassSide:pixelTex("#7a5230", ["#6b4527","#895c36"], { draw:(x,S)=>{ x.fillStyle="#5fa83a"; x.fillRect(0,0,S,4); for(let i=0;i<10;i++){x.fillStyle="#4f9230";x.fillRect((Math.random()*S)|0,(Math.random()*4)|0,1,1);} } }),
+  planks:   pixelTex("#b07d44", ["#9c6b39","#c08a50","#a5743e"], { draw:(x,S)=>{ x.fillStyle="#7a5230"; for(let i=0;i<S;i+=4) x.fillRect(0,i,S,1); for(let i=3;i<S;i+=8) x.fillRect(i,0,1,4); for(let i=7;i<S;i+=8) x.fillRect(i,4,1,4);} }),
 };
 const lam = (map) => new THREE.MeshLambertMaterial({ map });
 // BoxGeometry face order: +x, -x, +y(top), -y(bottom), +z, -z
 const grassMats = [lam(TEX.grassSide), lam(TEX.grassSide), lam(TEX.grassTop), lam(TEX.dirt), lam(TEX.grassSide), lam(TEX.grassSide)];
 const dirtMat = lam(TEX.dirt), stoneMat = lam(TEX.stone), woodMat = lam(TEX.wood), leafMat = lam(TEX.leaves);
+const plankMat = lam(TEX.planks);
+const glassMat = new THREE.MeshLambertMaterial({ color: 0xaad8ff, transparent: true, opacity: 0.34 });
 
 // gradient sky dome
 const sky = new THREE.Mesh(
@@ -602,7 +600,7 @@ function noise(x, z){
   const a=hash(xi,zi), b=hash(xi+1,zi), c=hash(xi,zi+1), d=hash(xi+1,zi+1);
   return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v;
 }
-const grassXf=[], dirtXf=[], stoneXf=[], woodXf=[], leafXf=[];
+const grassXf=[], dirtXf=[], stoneXf=[], woodXf=[], leafXf=[], plankXf=[], glassXf=[];
 const dummy = new THREE.Object3D();
 function pushBlock(arr, bx, by, bz){
   dummy.position.set(bx*B, by*B - B/2, bz*B);
@@ -619,9 +617,10 @@ for (let bx=-ISLAND_R; bx<=ISLAND_R; bx++) for (let bz=-ISLAND_R; bz<=ISLAND_R; 
     top = Math.round(noise(bx*0.16 + 10, bz*0.16 + 10) * 4 * ramp);
   }
   heightAt.set(bx + "," + bz, top);
+  const underHouse = (bx >= -17 && bx <= 17 && bz >= -5 && bz <= 5); // the house lays its own floor here
   const depth = 2 + Math.floor((1 - d) * 9);              // rounded underside (deepest at centre)
   for (let y = top; y >= top - depth; y--){
-    if (y === top) pushBlock(grassXf, bx, y, bz);
+    if (y === top) { if (!underHouse) pushBlock(grassXf, bx, y, bz); }
     else if (y >= top - 3) pushBlock(dirtXf, bx, y, bz);
     else pushBlock(stoneXf, bx, y, bz);
   }
@@ -631,7 +630,7 @@ let seed = 7;
 const rnd = () => (seed = (seed*9301 + 49297) % 233280) / 233280;
 for (let bx=-ISLAND_R; bx<=ISLAND_R; bx++) for (let bz=-ISLAND_R; bz<=ISLAND_R; bz++){
   const dist = Math.hypot(bx, bz);
-  if (dist < RING_BLOCKS + 3 || dist > ISLAND_R - 2 || rnd() > 0.035) continue;
+  if (dist < RING_BLOCKS + 4 || dist > ISLAND_R - 2 || rnd() > 0.012) continue;
   const base = heightAt.get(bx + "," + bz); if (base === undefined) continue;
   const th = 3 + (rnd()*2|0);
   for (let y=base+1; y<=base+th; y++) pushBlock(woodXf, bx, y, bz);
@@ -643,6 +642,25 @@ for (let bx=-ISLAND_R; bx<=ISLAND_R; bx++) for (let bz=-ISLAND_R; bz<=ISLAND_R; 
     pushBlock(leafXf, bx+lx, cy+ly, bz+lz);
   }
 }
+
+// ---- a Minecraft house (same block family) the camera scrolls into ----
+// A long hall along X: stone foundation, plank walls, log corners, glass
+// windows, a flat roof, and a doorway at the front (-X) end.
+const HX0=-17, HX1=17, HZ0=-5, HZ1=5, HWALL=5;
+const isPerim = (bx,bz) => (bx===HX0 || bx===HX1 || bz===HZ0 || bz===HZ1);
+for (let bx=HX0; bx<=HX1; bx++) for (let bz=HZ0; bz<=HZ1; bz++){
+  if (!isPerim(bx,bz)) { pushBlock(plankXf, bx, 0, bz); continue; }       // interior plank floor
+  pushBlock(stoneXf, bx, 0, bz);                                          // stone foundation
+  const corner = (bx===HX0||bx===HX1) && (bz===HZ0||bz===HZ1);
+  for (let by=1; by<=HWALL; by++){
+    if (bx===HX0 && Math.abs(bz)<=1 && by<=4) continue;                   // front doorway
+    if ((bz===HZ0||bz===HZ1) && (Math.abs(bx)%2===1) && (by===2||by===3)){ pushBlock(glassXf, bx, by, bz); continue; } // windows
+    pushBlock(corner ? woodXf : plankXf, bx, by, bz);                     // log corners + plank walls
+  }
+}
+for (let bx=HX0; bx<=HX1; bx++) for (let bz=HZ0; bz<=HZ1; bz++)           // flat roof
+  pushBlock(isPerim(bx,bz) ? stoneXf : plankXf, bx, HWALL+1, bz);
+
 function instanced(mats, xfs){
   const im = new THREE.InstancedMesh(boxGeo, mats, xfs.length);
   xfs.forEach((m,i)=> im.setMatrixAt(i, m));
@@ -654,6 +672,16 @@ instanced(dirtMat, dirtXf);
 instanced(stoneMat, stoneXf);
 instanced(woodMat, woodXf);
 instanced(leafMat, leafXf);
+instanced(plankMat, plankXf);
+instanced(glassMat, glassXf);
+
+// warm glowstone lanterns on the ceiling for a cosy interior glow
+const lampMat = new THREE.MeshLambertMaterial({ color: 0xffe2a0, emissive: 0xffb845 });
+[-12, -4, 4, 12].forEach(lx => {
+  const lamp = new THREE.Mesh(boxGeo, lampMat);
+  lamp.position.set(lx*B, 5*B - B*0.5, 0); scene.add(lamp);
+  const pl = new THREE.PointLight(0xffd9a0, 7, 22); pl.position.set(lx*B, 5*B - B, 0); scene.add(pl);
+});
 
 // drifting flat clouds (clusters of stretched white blocks)
 const clouds = [];
@@ -672,54 +700,40 @@ for (let i=0; i<14; i++){
   scene.add(g); clouds.push(g);
 }
 
-// central Minecraft beacon (glowing block + translucent beam to the sky)
-const beaconBase = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x6fe0ff, emissive: 0x2aa8d8 }));
-beaconBase.position.set(0, B/2, 0); scene.add(beaconBase);
-const beacon = new THREE.Mesh(
-  new THREE.BoxGeometry(B*0.8, 130, B*0.8),
-  new THREE.MeshBasicMaterial({ color: 0xa8e8ff, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })
-);
-beacon.position.set(0, 65, 0); scene.add(beacon);
-const beaconLight = new THREE.PointLight(0x9fe6ff, 26, 44); beaconLight.position.set(0, 6, 0); scene.add(beaconLight);
+// (the old neon beacon was removed — the house now sits at the centre)
 
 /* ============================================================================
-   [5] EXHIBITS — a ring of framed panels on pedestals, facing outward
+   [5] EXHIBITS — game posters mounted on the two interior walls of the house,
+   alternating north/south as you travel down the hall. Each poster records a
+   camera "station" (where to stand and what to look at) for the scroll path.
    ============================================================================ */
-const PW = 3.2, PH = 4.3; // panel width / height (RING is declared in the world section)
-const exhibits = [];      // { group, panel, light, baseScale }
-const pickables = [];     // meshes the raycaster tests
-const covers = [];        // data-URLs for the HTML card
+const PW = 3.0, PH = 4.0;          // poster width / height
+const POSTER_Y = 3.0 * B;          // poster centre height
+const WALL_IN  = 4.45 * B;         // distance of the poster plane from the hall centre (z)
+const EYE_Y    = 3.2 * B;          // camera eye height inside the hall
+const exhibits = [];               // { group, art, frame, light, hover, station }
+const pickables = [];              // meshes the raycaster tests
+const covers = [];                 // data-URLs for the HTML card
 
 function buildExhibits() {
   GAMES.forEach((game, i) => {
-    const angle = (i / GAMES.length) * Math.PI * 2;
-    const dir = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));  // outward radial
+    const bx = -14 + i * 2;        // block x along the hall
+    const north = (i % 2 === 0);   // alternate which wall the poster hangs on
+    const side = north ? 1 : -1;
+    const px = bx * B;
+    const pz = side * WALL_IN;
 
     const group = new THREE.Group();
-    group.position.copy(dir).multiplyScalar(RING);
-    group.rotation.y = angle;            // +Z of the group now points outward
+    group.position.set(px, POSTER_Y, pz);
+    group.rotation.y = north ? Math.PI : 0;   // face into the hall
     scene.add(group);
 
-    // blocky stone pedestal (two cubes) with a coloured accent slab on top
-    const ped = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1, 2.2), stoneMat);
-    ped.position.y = 0.5; group.add(ped);
-    const ped2 = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1, 1.7), stoneMat);
-    ped2.position.y = 1.5; group.add(ped2);
-    const pedRim = new THREE.Mesh(
-      new THREE.BoxGeometry(1.8, 0.22, 1.8),
-      new THREE.MeshBasicMaterial({ color: new THREE.Color(game.a) })
-    );
-    pedRim.position.y = 2.1; group.add(pedRim);
-
-    // panel sub-group (this is what bobs / scales on hover)
-    const panel = new THREE.Group(); panel.position.y = 4.5; group.add(panel);
-
-    // glowing frame / backing
+    // wooden frame against the wall
     const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(PW + 0.3, PH + 0.3, 0.2),
-      new THREE.MeshStandardMaterial({ color: 0x05070d, emissive: new THREE.Color(game.a), emissiveIntensity: 0.6, roughness: 0.5 })
+      new THREE.BoxGeometry(PW + 0.35, PH + 0.35, 0.16),
+      new THREE.MeshStandardMaterial({ color: 0x3a2713, emissive: new THREE.Color(game.a), emissiveIntensity: 0.3, roughness: 0.7 })
     );
-    panel.add(frame);
+    group.add(frame);
 
     // the artwork
     const cover = makeCover(game);
@@ -730,14 +744,20 @@ function buildExhibits() {
       new THREE.PlaneGeometry(PW, PH),
       new THREE.MeshBasicMaterial({ map: tex })
     );
-    art.position.z = 0.12; panel.add(art);
+    art.position.z = 0.10; group.add(art);
 
-    // a little accent spotlight kissing the panel
-    const light = new THREE.PointLight(new THREE.Color(game.a), 6, 14, 2);
-    light.position.set(0, 0, 2.4); panel.add(light);
+    // accent light washing the poster
+    const light = new THREE.PointLight(new THREE.Color(game.a), 4, 11, 2);
+    light.position.set(0, 0, 1.6); group.add(light);
 
     [frame, art].forEach(m => { m.userData.index = i; pickables.push(m); });
-    exhibits.push({ group, panel, frame, art, light, angle, dir, hover: 0 });
+
+    // camera station: stand slightly toward the opposite wall, looking at this poster
+    const station = {
+      pos: new THREE.Vector3(px, EYE_Y, -side * 1.4 * B),
+      look: new THREE.Vector3(px, POSTER_Y, pz),
+    };
+    exhibits.push({ group, art, frame, light, hover: 0, station });
   });
 }
 
@@ -750,44 +770,52 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.
 composer.addPass(bloom);
 
 /* ============================================================================
-   [7] INTERACTION — hover, click, and smooth camera fly-to
+   [7] INTERACTION — SCROLL TO WALK INTO THE HOUSE
+   The camera follows a path: it starts outside the door and, as you scroll,
+   glides station-to-station deeper down the hall, turning to face each poster.
    ============================================================================ */
 const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2(-2, -2);
-let hovered = -1, selected = -1;
-
-const tween = { active: false, t: 0, dur: 1.15, fromP: new THREE.Vector3(), toP: new THREE.Vector3(), fromT: new THREE.Vector3(), toT: new THREE.Vector3(), then: null };
+const mouse = new THREE.Vector2(0, 0);
+let hovered = -1;                 // poster under the cursor
 const easeInOut = x => x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
 
-function flyTo(toP, toT, then) {
-  tween.fromP.copy(camera.position); tween.toP.copy(toP);
-  tween.fromT.copy(controls.target); tween.toT.copy(toT);
-  tween.t = 0; tween.active = true; tween.then = then || null;
-  controls.enabled = false; controls.autoRotate = false;
-}
+// The scroll path is built in boot() once the posters exist.
+let PATH = [];
+let scrollPos = 0, scrollTarget = 0;   // float index along PATH
+const tmpLook = new THREE.Vector3();
 
-function focusPoint(i) {
-  const e = exhibits[i];
-  const camPos = e.dir.clone().multiplyScalar(RING + 7.5); camPos.y = 4.6;
-  const look = e.dir.clone().multiplyScalar(RING); look.y = 4.5;
-  return { camPos, look };
+function buildPath() {
+  PATH = [];
+  // entry: standing outside the front doorway, looking in
+  PATH.push({ pos: new THREE.Vector3(-28, EYE_Y + 0.5, 0), look: new THREE.Vector3(-14 * B, POSTER_Y, 0) });
+  exhibits.forEach(e => PATH.push({ pos: e.station.pos, look: e.station.look }));
+  // exit: deep at the back of the hall, looking at the far wall
+  PATH.push({ pos: new THREE.Vector3(15 * B, EYE_Y, 0), look: new THREE.Vector3(17 * B, POSTER_Y, 0) });
 }
+const pathMax = () => PATH.length - 1;
+// station index 1..N corresponds to game (index - 1)
+const stationToGame = idx => (idx >= 1 && idx <= GAMES.length) ? idx - 1 : -1;
 
-function selectGame(i) {
-  if (i === selected) return;
-  selected = i;
-  const f = focusPoint(i);
-  flyTo(f.camPos, f.look, () => { controls.enabled = true; });
+// scroll / wheel drives forward & backward travel
+addEventListener("wheel", e => {
+  e.preventDefault();
+  scrollTarget = Math.max(0, Math.min(pathMax(), scrollTarget + e.deltaY * 0.0035));
+}, { passive: false });
+
+// touch drag (vertical) also travels, for mobile
+let touchY = null;
+addEventListener("touchstart", e => { touchY = e.touches[0].clientY; }, { passive: true });
+addEventListener("touchmove", e => {
+  if (touchY === null) return;
+  const dy = touchY - e.touches[0].clientY; touchY = e.touches[0].clientY;
+  scrollTarget = Math.max(0, Math.min(pathMax(), scrollTarget + dy * 0.02));
+}, { passive: true });
+addEventListener("touchend", () => { touchY = null; });
+
+function gotoGame(i) {
+  scrollTarget = i + 1;                       // station index for game i
   showDetail(i);
   document.querySelectorAll(".item").forEach((el, k) => el.classList.toggle("active", k === i));
-}
-
-function deselect() {
-  if (selected === -1 && !document.getElementById("detail").classList.contains("show")) return;
-  selected = -1;
-  flyTo(OVERVIEW.pos, OVERVIEW.tgt, () => { controls.enabled = true; controls.autoRotate = true; });
-  hideDetail();
-  document.querySelectorAll(".item").forEach(el => el.classList.remove("active"));
 }
 
 // --- detail card population ---
@@ -802,31 +830,34 @@ function showDetail(i) {
   detail.querySelector(".desc").textContent = g.desc;
   detail.classList.add("show");
 }
-function hideDetail() { detail.classList.remove("show"); }
-detail.querySelector(".close").addEventListener("click", deselect);
+function hideDetail() {
+  detail.classList.remove("show");
+  document.querySelectorAll(".item").forEach(el => el.classList.remove("active"));
+}
+detail.querySelector(".close").addEventListener("click", hideDetail);
 
-// --- pointer handling: distinguish a click from an orbit-drag ---
+// --- pointer handling: click a poster to open its card; move for parallax ---
 let downX = 0, downY = 0, downT = 0;
 renderer.domElement.addEventListener("pointerdown", e => { downX = e.clientX; downY = e.clientY; downT = performance.now(); });
 renderer.domElement.addEventListener("pointerup", e => {
   const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
-  if (moved < 6 && performance.now() - downT < 400) handleClick(e);
+  if (moved < 6 && performance.now() - downT < 400) {
+    raycaster.setFromCamera(mouse, camera);
+    const hit = raycaster.intersectObjects(pickables, false)[0];
+    if (hit) gotoGame(hit.object.userData.index);
+    else hideDetail();
+  }
 });
 renderer.domElement.addEventListener("pointermove", e => {
   mouse.x = (e.clientX / innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / innerHeight) * 2 + 1;
 });
 
-function handleClick(e) {
-  mouse.x = (e.clientX / innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
-  raycaster.setFromCamera(mouse, camera);
-  const hit = raycaster.intersectObjects(pickables, false)[0];
-  if (hit) selectGame(hit.object.userData.index);
-  else deselect();
-}
-
-addEventListener("keydown", e => { if (e.key === "Escape") deselect(); });
+addEventListener("keydown", e => {
+  if (e.key === "Escape") hideDetail();
+  if (e.key === "ArrowDown" || e.key === "ArrowRight") scrollTarget = Math.min(pathMax(), scrollTarget + 1);
+  if (e.key === "ArrowUp"   || e.key === "ArrowLeft")  scrollTarget = Math.max(0, scrollTarget - 1);
+});
 
 // --- sidebar list ---
 const listEl = document.getElementById("list");
@@ -834,7 +865,7 @@ GAMES.forEach((g, i) => {
   const item = document.createElement("div");
   item.className = "item";
   item.innerHTML = `<span class="dot" style="color:${g.a}"></span><span class="yr">${g.year}</span><span class="nm">${g.title}</span>`;
-  item.addEventListener("click", () => selectGame(i));
+  item.addEventListener("click", () => gotoGame(i));
   listEl.appendChild(item);
 });
 
@@ -843,47 +874,56 @@ GAMES.forEach((g, i) => {
    ============================================================================ */
 const clock = new THREE.Clock();
 
+let lastPoster = -2;
+const hintEl = document.getElementById("hint");
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
   const t = clock.elapsedTime;
 
-  // camera tween
-  if (tween.active) {
-    tween.t += dt / tween.dur;
-    const k = easeInOut(Math.min(1, tween.t));
-    camera.position.lerpVectors(tween.fromP, tween.toP, k);
-    controls.target.lerpVectors(tween.fromT, tween.toT, k);
-    if (tween.t >= 1) { tween.active = false; if (tween.then) tween.then(); }
+  // ease the scroll position toward the target, then place the camera on the path
+  if (PATH.length > 1) {
+    scrollPos += (scrollTarget - scrollPos) * Math.min(1, dt * 3.2);
+    const seg = Math.max(0, Math.min(PATH.length - 2, Math.floor(scrollPos)));
+    const f = easeInOut(Math.max(0, Math.min(1, scrollPos - seg)));
+    const a = PATH[seg], b = PATH[seg + 1];
+    camera.position.lerpVectors(a.pos, b.pos, f);
+    tmpLook.lerpVectors(a.look, b.look, f);
+    // gentle mouse parallax
+    camera.position.x += mouse.x * 0.5;
+    camera.position.y += -mouse.y * 0.35;
+    camera.lookAt(tmpLook);
+
+    // which poster are we closest to?
+    const cur = stationToGame(Math.round(scrollPos));
+    if (cur !== lastPoster) {
+      lastPoster = cur;
+      hintEl.innerHTML = cur >= 0
+        ? `<b style="color:${GAMES[cur].a}">${GAMES[cur].title}</b> · ${GAMES[cur].year} — click the poster to read its story`
+        : `Scroll to walk deeper into the house →`;
+    }
   }
 
-  // hover raycast only when idle in overview
-  if (!tween.active && selected === -1) {
-    raycaster.setFromCamera(mouse, camera);
-    const hit = raycaster.intersectObjects(pickables, false)[0];
-    const idx = hit ? hit.object.userData.index : -1;
-    if (idx !== hovered) { hovered = idx; renderer.domElement.style.cursor = idx >= 0 ? "pointer" : "grab"; }
-  }
+  // hover highlight for the cursor
+  raycaster.setFromCamera(mouse, camera);
+  const hit = raycaster.intersectObjects(pickables, false)[0];
+  const hov = hit ? hit.object.userData.index : -1;
+  if (hov !== hovered) { hovered = hov; renderer.domElement.style.cursor = hov >= 0 ? "pointer" : "default"; }
 
-  // animate exhibits: gentle bob + hover/selection emphasis
+  // posters: emphasise the one we're at / hovering
+  const focusIdx = stationToGame(Math.round(scrollPos));
   exhibits.forEach((e, i) => {
-    e.panel.position.y = 4.5 + Math.sin(t * 0.8 + i * 0.6) * 0.12;
-    e.panel.rotation.z = Math.sin(t * 0.5 + i) * 0.015;
-    const want = (i === hovered || i === selected) ? 1 : 0;
-    e.hover += (want - e.hover) * Math.min(1, dt * 8);
-    const s = 1 + e.hover * 0.09;
-    e.panel.scale.setScalar(s);
-    e.light.intensity = 6 + e.hover * 10;
-    e.frame.material.emissiveIntensity = 0.6 + e.hover * 1.4;
+    const want = (i === hovered || i === focusIdx) ? 1 : 0;
+    e.hover += (want - e.hover) * Math.min(1, dt * 6);
+    e.group.scale.setScalar(1 + e.hover * 0.05);
+    e.light.intensity = 4 + e.hover * 9;
+    e.frame.material.emissiveIntensity = 0.3 + e.hover * 1.1;
   });
 
-  // drifting clouds + pulsing beacon
+  // drifting clouds
   clouds.forEach(g => { g.position.x += dt * g.userData.speed; if (g.position.x > 140) g.position.x = -140; });
-  beacon.material.opacity = 0.28 + Math.sin(t * 2) * 0.07;
-  beaconBase.rotation.y += dt * 0.6;
-  beaconLight.intensity = 24 + Math.sin(t * 1.6) * 8;
 
-  controls.update();
   composer.render();
 }
 
@@ -899,6 +939,10 @@ addEventListener("resize", () => {
 async function boot() {
   try { await document.fonts.ready; } catch (_) {}
   buildExhibits();
+  buildPath();
+  // start the camera at the entry, outside the door
+  camera.position.copy(PATH[0].pos);
+  camera.lookAt(PATH[0].look);
   animate();
   setTimeout(() => document.getElementById("loader").classList.add("hide"), 350);
 }

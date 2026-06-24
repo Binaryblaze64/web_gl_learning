@@ -9,32 +9,33 @@ self-contained and runs in a browser.
 
 ## ⭐ Featured: Hall of Legends
 
-[**`hall-of-legends.html`**](hall-of-legends.html) — an interactive **3D museum
-of legendary video games**, built with Three.js and set on a **floating Minecraft
-voxel island** (inspired by the Minecraft-folio style of Andrew Woan / JReyes).
-Orbit the world, hover an exhibit to highlight it, and click to fly the camera in
-and read each game's story: what it is, who made it, and the year it arrived.
-16 legends span five decades — from *Pong* (1972) to *Among Us* (2018).
+[**`hall-of-legends.html`**](hall-of-legends.html) — a **3D Minecraft house you
+scroll through**, built with Three.js and set on a floating voxel island
+(inspired by the Minecraft-folio style of Andrew Woan / JReyes). **Scroll** to
+walk through the front door and glide deeper down the hallway — a new game poster
+greets you at every step, telling you what the game is, who made it, and the year
+it arrived. 16 legends span five decades — from *Pong* (1972) to *Among Us* (2018).
 
 <table>
   <tr>
-    <td width="62%"><img src="docs/img/hall-overview.png" alt="A floating Minecraft voxel island ringed with game exhibits on stone pedestals, a beacon beam rising into a bright blocky sky" /></td>
-    <td width="38%"><img src="docs/img/hall-detail.png" alt="Flying in to the Pac-Man exhibit with a detail card showing year, genre and description" /></td>
+    <td width="58%"><img src="docs/img/house-entry.png" alt="Looking down a plank-walled Minecraft hallway lined with glowing-framed game posters, a glowstone lantern overhead" /></td>
+    <td width="42%"><img src="docs/img/house-poster.png" alt="The camera arrived at the Sonic poster with a detail card showing year, genre and description" /></td>
   </tr>
   <tr>
-    <td align="center">A floating voxel island of exhibits</td>
-    <td align="center">Click to fly in &amp; read the story</td>
+    <td align="center">Scroll deeper down the hall…</td>
+    <td align="center">…and click a poster for its story</td>
   </tr>
 </table>
 
 **Highlights**
 
 - Pure Three.js loaded via an importmap from a CDN — no `npm install`, no bundler
-- A **fully procedural Minecraft world**: a floating island generated from ~20k `InstancedMesh` voxels (grass / dirt / stone with a rounded underside), scattered oak trees, drifting blocky clouds, a gradient sky, a pixel-art sun, and a central beacon beam
-- 16 game exhibits on blocky stone pedestals ringing a flat grass plaza, each with **procedural cover art** drawn on a `<canvas>` — hand-coded iconic symbols (Pac-Man, the Space Invaders alien, a Tetris stack, a Pokéball, an Among Us crewmate…)
-- Pixel-art block textures (nearest-filtered) and per-face Minecraft-style lighting
-- Raycast hover highlighting and smooth eased **camera fly-to** transitions on selection
-- A clickable sidebar index, an HTML detail card, and keyboard control (`Esc` to step back)
+- A **fully procedural Minecraft world**: a floating island of `InstancedMesh` voxels (grass / dirt / stone with a rounded underside), a few oak trees, drifting blocky clouds and a gradient sky — all built from cubes
+- A **house made from the same blocks**: stone foundation, plank walls, log corners, glass windows, a flat roof, a front doorway, and warm glowstone lanterns inside
+- **Scroll-to-explore navigation** — the camera follows a path of "stations" from outside the door down the hall, turning to face each poster in turn (also works with arrow keys, touch-drag, or the sidebar)
+- 16 wall-mounted posters with **procedural cover art** drawn on a `<canvas>` — hand-coded iconic symbols (Pac-Man, the Space Invaders alien, a Tetris stack, a Pokéball, an Among Us crewmate…)
+- Pixel-art, nearest-filtered block textures with per-face Minecraft-style lighting
+- Click a poster (or a sidebar entry) for an HTML detail card; gentle mouse-move parallax; `Esc` to close
 
 > ⚠️ Because it imports Three.js as ES modules from a CDN, open it via a local
 > server (e.g. `python -m http.server` then visit
