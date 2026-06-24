@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  RAW WEBGL ROTATING CUBE — A GUIDED TOUR OF THE MVP MATRIX PIPELINE
+  ============================================================================
+
+  This single file is an educational reference. Every important idea is
+  explained in a comment near the code that uses it. Read it top-to-bottom
+  like a tutorial, or jump to a section using these anchors:
+
+    [SECTION 1] HTML / CSS scaffolding + info overlay
+    [SECTION 2] The shaders (GLSL): vertex shader = geometry, fragment = color
+    [SECTION 3] Matrix math from scratch (identity, translate, rotate, perspective, multiply)
+    [SECTION 4] WebGL setup: context, compiling shaders, linking a program
+    [SECTION 5] Cube geometry: 36 vertices, the [x,y,z,r,g,b] layout
+    [SECTION 6] Buffers + attributes: getting data onto the GPU
+    [SECTION 7] Uniforms: handing the matrices to the shader
+    [SECTION 8] The render loop: requestAnimationFrame, depth test, draw
+    [SECTION 9] Debug panel + console.log of live matrix numbers
+
+  Mathematical convention used throughout:
+    - We use COLUMN-VECTOR math: a point is a column, and we transform it as
+      v' = M * v. That means the matrix on the LEFT is applied LAST.
+    - WebGL/GLSL expects matrices in COLUMN-MAJOR memory order. Our Float32Array
+      layout is written to match that (explained in multiplyMatrices).
+  ============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raw WebGL Cube — MVP Pipeline Explained</title>
+<style>
+  /* ---------- [SECTION 1] Page styling ----------
+     Dark background so the colored cube has strong contrast, and a
+     monospace overlay so the matrix numbers line up in neat columns. */
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b0e14;          /* near-black navy */
+    color: #d7dce5;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  /* The canvas fills the whole window; WebGL draws into it. */
+  #glcanvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+  /* Info overlay (top-left): explains what is happening in plain English. */
+  #info {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    max-width: 360px;
+    padding: 14px 16px;
+    background: rgba(18, 22, 32, 0.82);
+    border: 1px solid #2a3346;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    backdrop-filter: blur(4px);
+    pointer-events: none;          /* clicks pass through to nothing */
+  }
+  #info h1 { font-size: 15px; margin: 0 0 8px; color: #8ab4ff; }
+  #info b { color: #ffd479; }
+  #info .muted { color: #8b93a3; font-size: 12px; }
+
+  /* Debug panel (bottom-left): shows live rotation angle + the Model matrix. */
+  #debug {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    padding: 12px 14px;
+    background: rgba(18, 22, 32, 0.82);
+    border: 1px solid #2a3346;
+    border-radius: 10px;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre;              /* preserve the matrix grid spacing */
+    color: #9fe6a0;
+  }
+  #debug .title { color: #8ab4ff; font-family: "Segoe UI", sans-serif; margin-bottom: 6px; }
+  #debug .val { color: #ffd479; }
+</style>
+</head>
+<body>
+
+  <!-- The drawing surface. WebGL is just a rendering context attached to it. -->
+  <canvas id="glcanvas"></canvas>
+
+  <!-- [SECTION 1] Human-readable explanation overlay -->
+  <div id="info">
+    <h1>WebGL Cube · MVP Pipeline</h1>
+    Each frame every cube corner travels through three matrices:
+    <br>• <b>Model</b> — spins/positions the cube in the world
+    <br>• <b>View</b> — moves the world relative to the camera
+    <br>• <b>Projection</b> — adds perspective (far = smaller)
+    <br><br>
+    The GPU computes <b>P · V · M · position</b> for all 36 vertices in parallel,
+    then fills 12 triangles with interpolated color.
+    <br><br>
+    <span class="muted">Open the DevTools console (F12) to watch the matrices print.</span>
+  </div>
+
+  <!-- [SECTION 9] Live numeric debug panel, updated each frame -->
+  <div id="debug"></div>
+
+<!--
+  ===========================================================================
+  [SECTION 2] THE SHADERS
+  ===========================================================================
+  A shader is a small program that runs ON THE GPU, once per element, massively
+  in parallel. There are two kinds in this pipeline:
+
+    VERTEX SHADER   — runs once PER VERTEX (we have 36). Its job is to decide
+                      WHERE a vertex ends up on screen. This is where the MVP
+                      math happens. It writes gl_Position.
+
+    FRAGMENT SHADER — runs once PER PIXEL ("fragment") that a triangle covers.
+                      Its job is to decide the COLOR of that pixel. It writes
+                      gl_FragColor.
+
+  Data flows vertex -> fragment via "varying" variables, which the GPU smoothly
+  INTERPOLATES across the triangle. So a color set at 3 corners produces a
+  gradient across the face for free (here all 3 corners of a face share one
+  color, so each face is a flat solid color).
+
+  We store the GLSL source inside <script> tags with a non-JS type so the
+  browser does not execute them as JavaScript; we read their .text instead.
+-->
+
+<!-- ---- VERTEX SHADER ---- -->
+<script id="vertex-shader" type="x-shader/x-vertex">
+  // 'attribute' = per-vertex input read from a buffer (different each vertex).
+  attribute vec3 aPosition;   // the corner's local-space position [x, y, z]
+  attribute vec3 aColor;      // the corner's color [r, g, b]
+
+  // 'uniform' = a value that is the SAME for every vertex in a draw call
+  // (it does not vary per-vertex — hence the name "uniform"). We upload our
+  // three matrices here once per frame.
+  uniform mat4 uModel;        // Model:      local space  -> world space
+  uniform mat4 uView;         // View:       world space  -> camera space
+  uniform mat4 uProjection;   // Projection: camera space -> clip space
+
+  // 'varying' = output to the fragment shader, interpolated across the triangle.
+  varying vec3 vColor;
+
+  void main() {
+    // ------------------------------------------------------------------
+    // THE MVP MULTIPLICATION — the heart of the whole project.
+    //
+    // We read it RIGHT-TO-LEFT because these are column vectors:
+    //
+    //   1. uModel * vec4(aPosition, 1.0)
+    //        Takes the cube corner from LOCAL space (centered on the cube's
+    //        own origin) into WORLD space (where it sits, how it is rotated).
+    //
+    //   2. uView * (that)
+    //        Re-expresses the world point relative to the CAMERA. There is no
+    //        real "camera" object in 3D math: instead we move the entire world
+    //        by the INVERSE of where the camera is. Pushing the cube to -z is
+    //        mathematically the same as pulling a camera back to +z.
+    //
+    //   3. uProjection * (that)
+    //        Warps camera space into CLIP space so that distant things shrink,
+    //        and loads the 'w' component used for the perspective divide
+    //        (explained in perspectiveMatrix() below).
+    //
+    // The 1.0 in the 4th slot makes this a POINT (not a direction), which is
+    // what lets a 4x4 matrix translate it. See translationMatrix().
+    // ------------------------------------------------------------------
+    gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0);
+
+    // Pass the color through; the GPU interpolates it for the fragment shader.
+    vColor = aColor;
+  }
+</script>
+
+<!-- ---- FRAGMENT SHADER ---- -->
+<script id="fragment-shader" type="x-shader/x-fragment">
+  // Fragment shaders have no default precision for floats, so we must declare one.
+  precision mediump float;
+
+  varying vec3 vColor;  // the interpolated color arriving from the vertex shader
+
+  void main() {  // every fragment shader must have a main function 
+    // gl_FragColor is the final pixel color: red, green, blue, alpha(opacity).
+    gl_FragColor = vec4(vColor, 1.0);   // here the vec4 means rgb + alpha which is opacity/transparency
+  }
+</script>
+
+<script>
+"use strict";
+
+/* ===========================================================================
+   [SECTION 3] MATRIX MATH FROM SCRATCH
+   ===========================================================================
+   A 3D transform is a 4x4 matrix. We use 4x4 (not 3x3) because the extra row
+   and column let a single matrix express ROTATION, SCALE *and* TRANSLATION
+   together — this is called a "homogeneous" coordinate system, and the 4th
+   coordinate is 'w'.
+
+   MEMORY LAYOUT (important!):
+   GPUs/OpenGL expect matrices in COLUMN-MAJOR order: the array lists the first
+   COLUMN top-to-bottom, then the second column, and so on. So a Float32Array
+     [ m0, m1, m2, m3,   m4, m5, m6, m7,   m8, m9, m10, m11,  m12, m13, m14, m15 ]
+   represents the matrix (where mN is index N in the array):
+
+        | m0  m4  m8   m12 |        column 0 = (m0, m1, m2, m3)
+        | m1  m5  m9   m13 |        column 3 = (m12, m13, m14, m15) = translation
+        | m2  m6  m10  m14 |
+        | m3  m7  m11  m15 |
+
+   Notice the TRANSLATION lives in the last column (indices 12,13,14). Keep
+   that picture in mind while reading each function below.
+   =========================================================================== */
+
+// --- identityMatrix ---------------------------------------------------------
+// The identity matrix is the "1" of matrix multiplication: I * v = v. It leaves
+// any point unchanged. Why do we need it?
+//   • It is the safe STARTING POINT for building up a transform. You begin at
+//     "do nothing" and multiply in rotations/translations.
+//   • It is the correct value for a transform that should have no effect (e.g.
+//     a Model matrix for an object sitting un-rotated at the world origin).
+// The 1s run down the main diagonal; everything else is 0.
+function identityMatrix() {
+  return new Float32Array([
+    1, 0, 0, 0,   // column 0
+    0, 1, 0, 0,   // column 1
+    0, 0, 1, 0,   // column 2
+    0, 0, 0, 1,   // column 3
+  ]);
+}
+
+// --- translationMatrix ------------------------------------------------------
+// Translation = sliding a point by (tx, ty, tz) without rotating or scaling it.
+//
+// THE MATH: a pure 3x3 matrix can only do linear maps, and those ALWAYS keep
+// the origin fixed (M * 0 = 0), so a 3x3 can never "move" things. The trick of
+// homogeneous coordinates is to bump the point up to 4D as (x, y, z, 1) and put
+// the offsets in the last column. Multiplying out:
+//
+//   | 1 0 0 tx |   | x |   | x + tx*1 |
+//   | 0 1 0 ty | * | y | = | y + ty*1 |
+//   | 0 0 1 tz |   | z |   | z + tz*1 |
+//   | 0 0 0 1  |   | 1 |   |    1     |
+//
+// The w=1 is what "activates" the translation column. (A direction vector would
+// use w=0 and thus ignore translation — exactly what we want for directions.)
+function translationMatrix(tx, ty, tz) {
+  const m = identityMatrix();   // start from "no change"...
+  m[12] = tx;                   // ...then put the offsets in the last column.
+  m[13] = ty;                   // (indices 12,13,14 because of column-major layout)
+  m[14] = tz;
+  return m;
+}
+
+// --- rotationXMatrix --------------------------------------------------------
+// Rotation about the X axis. Points keep their x, while their (y, z) pair spins
+// around the x-axis like the hands of a clock.
+//
+// THE TRIGONOMETRY: in 2D, rotating a point (a, b) by angle θ gives
+//     a' = a*cos θ − b*sin θ
+//     b' = a*sin θ + b*cos θ
+// For X-rotation the spinning plane is the (y, z) plane, so we apply that 2D
+// rotation to (y, z) and leave x alone:
+//     y' = y*cos − z*sin
+//     z' = y*sin + z*cos
+// Below, remember the array is COLUMN-MAJOR, so m[index] = row + 4*col.
+function rotationXMatrix(angle) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return new Float32Array([
+    1, 0,  0, 0,   // col 0: x is untouched
+    0, c,  s, 0,   // col 1: contributes to y' and z'  (row1=cos -> y'; row2=sin -> z')
+    0, -s, c, 0,   // col 2: contributes to y' and z'  (row1=-sin; row2=cos)
+    0, 0,  0, 1,
+  ]);
+}
+
+// --- rotationYMatrix --------------------------------------------------------
+// Rotation about the Y axis: y stays fixed; the (x, z) pair spins.
+//     x' =  x*cos + z*sin
+//     z' = -x*sin + z*cos
+// (The sign pattern differs from X because of the axis ordering / right-hand
+//  rule, but it is the same 2D cos/sin rotation applied to a different plane.)
+function rotationYMatrix(angle) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return new Float32Array([
+    c, 0, -s, 0,   // col 0
+    0, 1,  0, 0,   // col 1: y untouched
+    s, 0,  c, 0,   // col 2
+    0, 0,  0, 1,
+  ]);
+}
+
+// --- perspectiveMatrix ------------------------------------------------------
+// *** THE MOST IMPORTANT FUNCTION — read this slowly. ***
+//
+// WHAT IS A FRUSTUM?
+//   Your eye does not see an infinite box; it sees a "frustum" — a pyramid with
+//   its tip at the eye and its top sliced off. Picture the pyramid of vision:
+//   the small front face is the NEAR plane, the large back face is the FAR
+//   plane, and only objects BETWEEN those two slices are visible.
+//
+//        far plane (big)
+//        \-----------------/
+//         \               /
+//          \  visible    /
+//           \  region   /
+//            \---------/   near plane (small)
+//             \       /
+//              \     /
+//               \   /
+//                \ /
+//                eye (camera at origin, looking down -z)
+//
+// WHY NEAR/FAR PLANES?
+//   • NEAR (>0): the GPU stores depth with limited precision. We cannot include
+//     distance 0 (that would require infinite precision / divide-by-zero), so we
+//     clip anything closer than 'near'.
+//   • FAR: bounds the depth range so the limited-precision depth buffer can map
+//     real distances into a finite [0,1] range for depth testing.
+//   The gap between them is the "depth range"; making it too huge causes
+//   "z-fighting" (flickering) because precision gets spread too thin.
+//
+// HOW DOES PERSPECTIVE CREATE DEPTH?
+//   The illusion that far things look smaller comes from DIVIDING each point's
+//   x and y by its distance from the eye. This matrix does NOT divide directly
+//   (a matrix can't). Instead it cleverly copies −z into the output's w slot:
+//       gl_Position.w = −z_camera   (distance in front of the camera)
+//   Then, AFTER the vertex shader, the GPU automatically performs the
+//
+//       *** PERSPECTIVE DIVIDE ***:   (x, y, z, w)  ->  (x/w, y/w, z/w)
+//
+//   Because w grows with distance, dividing by it shrinks distant geometry.
+//   That single divide is what turns a flat projection into true perspective.
+//
+// THE NUMBERS:
+//   fov    — vertical field of view in RADIANS (how "wide" the lens is).
+//   aspect — viewport width / height, so the cube is not stretched.
+//   near,far — the clipping distances described above.
+//
+//   f = 1 / tan(fov/2) is the focal length; bigger fov -> smaller f -> more
+//   spread-out (wider) view.
+function perspectiveMatrix(fov, aspect, near, far) {
+  const f = 1.0 / Math.tan(fov / 2);   // focal length factor
+  const nf = 1.0 / (near - far);        // reused denominator for the z mapping
+
+  // Column-major. The key cells:
+  //   [0]  = f/aspect       -> scales x, corrected for the window shape
+  //   [5]  = f              -> scales y
+  //   [10],[14] = remap z from [near,far] into clip-space depth
+  //   [11] = -1             -> THIS copies -z into the output w (the magic)
+  //   [15] = 0              -> no constant added to w
+  return new Float32Array([
+    f / aspect, 0, 0,                       0,
+    0,          f, 0,                       0,
+    0,          0, (far + near) * nf,      -1,
+    0,          0, (2 * far * near) * nf,   0,
+  ]);
+}
+
+// --- multiplyMatrices -------------------------------------------------------
+// Computes the product a*b for two 4x4 column-major matrices and returns a new
+// matrix. We need this to COMBINE transforms: e.g. Model = Translate * RotateY *
+// RotateX means "first rotate about X, then about Y, then translate".
+//
+// WHY ORDER MATTERS:
+//   Matrix multiplication is NOT commutative: a*b ≠ b*a in general. With column
+//   vectors (v' = M*v) the RIGHTMOST matrix is applied to the point FIRST.
+//   "Rotate then translate" sends the cube on an orbit; "translate then rotate"
+//   spins it about a far-away pivot — visually completely different. So the
+//   sequence you write encodes the physical order of operations.
+//
+// THE COMPUTATION:
+//   result[row][col] = sum over k of  a[row][k] * b[k][col]  (a dot product of
+//   a's row with b's column). The index juggling below is just that formula,
+//   written for column-major storage where element (row, col) lives at
+//   index (row + 4*col).
+function multiplyMatrices(a, b) {
+  const out = new Float32Array(16);
+  for (let col = 0; col < 4; col++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) {
+        // a's element at (row, k)   = a[row + 4*k]
+        // b's element at (k, col)   = b[k + 4*col]
+        sum += a[row + 4 * k] * b[k + 4 * col];
+      }
+      out[row + 4 * col] = sum;
+    }
+  }
+  return out;
+}
+
+// Small helper: format a 4x4 matrix as a readable grid string for logging.
+function formatMatrix(m) {
+  let s = "";
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 4; col++) {
+      s += m[row + 4 * col].toFixed(2).padStart(7, " ");
+    }
+    s += "\n";
+  }
+  return s;
+}
+
+
+/* ===========================================================================
+   [SECTION 4] WEBGL SETUP — context, shaders, program
+   =========================================================================== */
+
+const canvas = document.getElementById("glcanvas");
+
+// Get a WebGL rendering context. This object ('gl') is our entire API surface:
+// every GPU command goes through it. We fall back to 'experimental-webgl' for
+// very old browsers.
+const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+if (!gl) {
+  alert("WebGL is not available in this browser.");
+  throw new Error("WebGL unavailable");
+}
+
+// Compile a single shader (vertex or fragment) from GLSL source text.
+// The GPU cannot run GLSL directly; it must be COMPILED into GPU machine code.
+function compileShader(type, source) {
+  const shader = gl.createShader(type);   // allocate a shader object
+  gl.shaderSource(shader, source);        // attach the source code
+  gl.compileShader(shader);               // compile it on the GPU driver
+  // Always check — shader compile errors are silent otherwise.
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    throw new Error("Shader compile error:\n" + gl.getShaderInfoLog(shader));
+  }
+  return shader;
+}
+
+// Read the GLSL out of the <script> tags from SECTION 2.
+const vertexSource   = document.getElementById("vertex-shader").text;
+const fragmentSource = document.getElementById("fragment-shader").text;
+
+const vertexShader   = compileShader(gl.VERTEX_SHADER,   vertexSource);
+const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+
+// A "program" is the LINKED pair of (vertex shader + fragment shader). Linking
+// connects the vertex shader's 'varying' outputs to the fragment shader's
+// 'varying' inputs and produces the final pipeline the GPU will run.
+const program = gl.createProgram();
+gl.attachShader(program, vertexShader);
+gl.attachShader(program, fragmentShader);
+gl.linkProgram(program);
+if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+  throw new Error("Program link error:\n" + gl.getProgramInfoLog(program));
+}
+gl.useProgram(program);   // make this the active program for subsequent draws
+
+/* ===========================================================================
+   [SECTION 5] CUBE GEOMETRY — 36 vertices, layout [x, y, z, r, g, b]
+   ===========================================================================
+   WHY 36 VERTICES AND NOT JUST 8 CORNERS?
+   A cube has 8 corners, but the GPU only draws TRIANGLES, and:
+     • Each square FACE must be split into 2 triangles (a quad = 2 triangles).
+     • 6 faces × 2 triangles × 3 vertices = 36 vertices.
+   Couldn't we reuse the 8 corners with an index buffer? For POSITION yes, but
+   each corner is shared by 3 faces that have DIFFERENT colors. A vertex carries
+   exactly ONE color, so a corner needs to be duplicated per-face to give each
+   face its own solid color. Hence we list all 36 explicitly — clearer for
+   learning, and required for distinct per-face colors.
+
+   VERTEX LAYOUT — each row is 6 floats: [ x, y, z,  r, g, b ]
+     • x,y,z : the corner position in the cube's LOCAL space, spanning -1..+1
+               (so the cube is 2 units wide, centered on its own origin).
+     • r,g,b : the face color, 0..1 per channel.
+
+   FACE CONSTRUCTION — two triangles per face share an edge to cover the square:
+        v0----v1            triangle A = v0, v1, v2
+        |    / |            triangle B = v0, v2, v3
+        |   /  |            (v0 and v2 are reused — they are the shared diagonal)
+        v3----v2
+   =========================================================================== */
+
+// Six distinct face colors (R,G,B in 0..1):
+const RED     = [1.0, 0.25, 0.25];
+const GREEN   = [0.30, 0.85, 0.35];
+const BLUE    = [0.30, 0.55, 1.00];
+const YELLOW  = [1.00, 0.85, 0.25];
+const MAGENTA = [0.90, 0.35, 0.90];
+const CYAN    = [0.25, 0.85, 0.90];
+
+// Helper to keep the big table readable: emit one vertex row [x,y,z, r,g,b].
+function v(x, y, z, color) { return [x, y, z, color[0], color[1], color[2]]; }
+
+// Build the 36-vertex array, two triangles per face. Each face uses 4 distinct
+// corners (a,b,c,d) wound counter-clockwise when viewed from outside.
+function face(a, b, c, d, color) {
+  return [
+    ...v(...a, color), ...v(...b, color), ...v(...c, color), // triangle A
+    ...v(...a, color), ...v(...c, color), ...v(...d, color), // triangle B
+  ];
+}
+
+// The 8 corners of the cube, named by sign of (x, y, z):
+// (Using +1/-1 so the cube is centered at its local origin.)
+const ppp = [ 1,  1,  1], ppm = [ 1,  1, -1], pmp = [ 1, -1,  1], pmm = [ 1, -1, -1];
+const mpp = [-1,  1,  1], mpm = [-1,  1, -1], mmp = [-1, -1,  1], mmm = [-1, -1, -1];
+
+const cubeVertices = new Float32Array([
+  ...face(pmp, ppp, ppm, pmm, RED),      // +X face (right)   normal points +x
+  ...face(mmm, mpm, mpp, mmp, GREEN),    // -X face (left)
+  ...face(mpp, mpm, ppm, ppp, BLUE),     // +Y face (top)
+  ...face(mmm, mmp, pmp, pmm, YELLOW),   // -Y face (bottom)
+  ...face(mmp, pmp, ppp, mpp, MAGENTA),  // +Z face (front, toward viewer)
+  ...face(pmm, mmm, mpm, ppm, CYAN),     // -Z face (back)
+]);
+
+const VERTEX_COUNT = cubeVertices.length / 6;   // 6 floats per vertex -> 36
+
+/* ===========================================================================
+   [SECTION 6] BUFFERS + VERTEX ATTRIBUTES — getting data to the GPU
+   ===========================================================================
+   WHY BUFFERS / WHAT IS THE GPU DOING?
+   The GPU is a separate processor with its own memory. JavaScript arrays live
+   in CPU/RAM; the GPU can't read them directly. A "buffer" is a block of GPU
+   memory. We upload our vertex data into it ONCE, and on each frame the GPU
+   streams those bytes straight from its own fast memory — no per-frame copy.
+   =========================================================================== */
+
+const vertexBuffer = gl.createBuffer();                 // allocate a GPU buffer
+gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);           // select it as current
+// Copy our 36-vertex array into GPU memory. STATIC_DRAW hints "set once, draw
+// many times", letting the driver place it in the fastest memory.
+gl.bufferData(gl.ARRAY_BUFFER, cubeVertices, gl.STATIC_DRAW);
+
+// VERTEX ATTRIBUTES: these tell the GPU how to slice the raw buffer bytes into
+// the per-vertex inputs (aPosition, aColor) that the vertex shader declared.
+// Our data is INTERLEAVED as [x,y,z, r,g,b, x,y,z, r,g,b, ...], so:
+//   stride  = 6 floats = 24 bytes between the start of consecutive vertices
+//   offset  = where this attribute begins within each vertex's 24-byte block
+const FLOAT_BYTES = 4;
+const STRIDE = 6 * FLOAT_BYTES;   // 24 bytes per vertex
+
+// Connect aPosition -> first 3 floats of each vertex.
+const aPosition = gl.getAttribLocation(program, "aPosition");
+gl.enableVertexAttribArray(aPosition);
+gl.vertexAttribPointer(
+  aPosition,   // which attribute slot
+  3,           // size: 3 components (x,y,z)
+  gl.FLOAT,    // data type
+  false,       // don't normalize
+  STRIDE,      // bytes between vertices
+  0            // offset: position starts at byte 0
+);
+
+// Connect aColor -> next 3 floats (after the 3 position floats).
+const aColor = gl.getAttribLocation(program, "aColor");
+gl.enableVertexAttribArray(aColor);
+gl.vertexAttribPointer(
+  aColor,
+  3,                  // r,g,b
+  gl.FLOAT,
+  false,
+  STRIDE,
+  3 * FLOAT_BYTES     // offset: color starts after x,y,z = 12 bytes in
+);
+
+/* ===========================================================================
+   [SECTION 7] UNIFORMS — handing the matrices to the shader
+   ===========================================================================
+   Uniforms are values constant across a whole draw call (same for all 36
+   vertices) — unlike attributes, which differ per vertex. We grab a handle
+   ("location") for each matrix uniform now, and upload fresh values each frame.
+   =========================================================================== */
+const uModel      = gl.getUniformLocation(program, "uModel");
+const uView       = gl.getUniformLocation(program, "uView");
+const uProjection = gl.getUniformLocation(program, "uProjection");
+
+// ----- The VIEW matrix (our "camera") -----
+// There is no camera primitive in WebGL. A camera is just the INVERSE of where
+// you want the eye to be. We want to look at a cube sitting at the world origin
+// from a bit back and up. Equivalent trick: push the whole world away from us.
+// Here we simply translate the world by (0, 0, -6): the cube starts at z=0, so
+// this places it 6 units in FRONT of the camera (camera looks down -z).
+const viewMatrix = translationMatrix(0, 0, -6);
+
+// ----- The PROJECTION matrix -----
+// Computed from the canvas aspect ratio; rebuilt on resize (see resize()).
+let projectionMatrix;
+
+function resize() {
+  // Match the canvas's internal pixel size to its displayed size so the image
+  // is crisp and the aspect ratio is correct.
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  canvas.width = w;
+  canvas.height = h;
+  // The viewport maps clip space (-1..1) onto these pixel dimensions.
+  gl.viewport(0, 0, w, h);
+  // Rebuild projection with the new aspect ratio. 45° vertical FOV, near 0.1,
+  // far 100 — a comfortable range that keeps depth precision healthy.
+  const fov = (45 * Math.PI) / 180;   // degrees -> radians
+  projectionMatrix = perspectiveMatrix(fov, w / h, 0.1, 100);
+}
+window.addEventListener("resize", resize);
+resize();   // set the initial size + projection
+
+/* ===========================================================================
+   [SECTION 8] THE RENDER LOOP
+   ===========================================================================
+   WHY requestAnimationFrame (rAF)?
+     It asks the browser to call us right before the next screen repaint
+     (typically 60 times/second, matching the display). Compared to setInterval
+     it stays in sync with the monitor (no tearing), and it automatically PAUSES
+     when the tab is hidden — saving battery. rAF passes a high-resolution
+     timestamp so animation speed is tied to real time, not frame count.
+
+   WHAT IS DEPTH TESTING / why enable it?
+     Triangles are drawn in list order, so a far triangle drawn AFTER a near one
+     would paint over it — wrong! The DEPTH TEST fixes this: the GPU keeps a
+     "depth buffer" storing the closest z seen at each pixel, and discards any
+     new fragment that is farther away. Result: nearer surfaces correctly hide
+     farther ones, regardless of draw order. Without it the cube looks
+     scrambled/inside-out.
+   =========================================================================== */
+
+gl.enable(gl.DEPTH_TEST);          // turn on the per-pixel depth test
+gl.clearColor(0.043, 0.055, 0.078, 1.0);  // dark background (matches the page)
+
+const debugEl = document.getElementById("debug");
+let angle = 0;                     // accumulated rotation, in radians
+let lastLogTime = 0;               // throttle console logging to ~once/sec
+
+function render(timeMs) {
+  // --- 1. Advance the animation based on real elapsed time ---
+  // Rotate at a steady ~0.6 rad/sec regardless of frame rate.
+  angle = (timeMs / 1000) * 0.6;
+
+  // --- 2. Build the MODEL matrix for this frame ---
+  // Compose two rotations: spin about Y, then about X. Reading right-to-left
+  // (column-vector convention), the cube is first rotated about X, then about
+  // Y. We use a slightly slower X spin (angle*0.7) so the motion looks 3D.
+  const rotY  = rotationYMatrix(angle);
+  const rotX  = rotationXMatrix(angle * 0.7);
+  const modelMatrix = multiplyMatrices(rotY, rotX);   // Model = RotY * RotX
+
+  // --- 3. Clear the framebuffer ---
+  // Wipe BOTH the color buffer (to the background) and the depth buffer (so last
+  // frame's depths don't linger and reject this frame's pixels).
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  // --- 4. Upload the three matrices into the shader uniforms ---
+  // The 'false' = "do not transpose"; our arrays are already column-major.
+  gl.uniformMatrix4fv(uModel,      false, modelMatrix);
+  gl.uniformMatrix4fv(uView,       false, viewMatrix);
+  gl.uniformMatrix4fv(uProjection, false, projectionMatrix);
+
+  // --- 5. Draw! ---
+  // TRIANGLES = read the buffer 3 vertices at a time, each triple a triangle.
+  // Start at vertex 0, draw all 36 -> 12 triangles -> the full cube.
+  gl.drawArrays(gl.TRIANGLES, 0, VERTEX_COUNT);
+
+  // --- 6. Update the on-screen debug panel ([SECTION 9]) ---
+  const deg = ((angle * 180) / Math.PI) % 360;
+  debugEl.innerHTML =
+    '<div class="title">DEBUG · live values</div>' +
+    'angle = <span class="val">' + deg.toFixed(1) + '&deg;</span>' +
+    '  (' + angle.toFixed(3) + ' rad)\n' +
+    'Model matrix (column-major shown as rows):\n' +
+    formatMatrix(modelMatrix);
+
+  // --- 7. Log the actual numbers to the console about once per second ---
+  // (Throttled so the console isn't flooded 60x/sec.)
+  if (timeMs - lastLogTime > 1000) {
+    lastLogTime = timeMs;
+    console.log(
+      "%c--- frame @ " + deg.toFixed(1) + "deg ---",
+      "color:#8ab4ff;font-weight:bold"
+    );
+    console.log("MODEL (local->world):\n"      + formatMatrix(modelMatrix));
+    console.log("VIEW (world->camera):\n"      + formatMatrix(viewMatrix));
+    console.log("PROJECTION (camera->clip):\n" + formatMatrix(projectionMatrix));
+  }
+
+  // --- 8. Schedule the next frame ---
+  requestAnimationFrame(render);
+}
+
+// Print the static matrices once at startup so the numbers are visible even
+// before the throttled per-frame logging kicks in.
+console.log("%cWebGL MVP demo started.", "color:#9fe6a0;font-weight:bold");
+console.log("Identity matrix:\n"        + formatMatrix(identityMatrix()));
+console.log("View matrix (translate world -6 on z):\n" + formatMatrix(viewMatrix));
+console.log("Projection matrix:\n"      + formatMatrix(projectionMatrix));
+
+// Kick off the loop.
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
