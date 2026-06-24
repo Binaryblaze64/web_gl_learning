@@ -155,6 +155,23 @@
   kbd { font-family: "Orbitron", sans-serif; font-size: 11px; background: #1b2238; border: 1px solid var(--line);
     border-radius: 5px; padding: 2px 7px; color: #cfe0ff; }
 
+  /* ---------- First-person crosshair + look prompt ---------- */
+  #crosshair {
+    position: fixed; left: 50%; top: 50%; width: 7px; height: 7px; z-index: 15;
+    transform: translate(-50%, -50%); border-radius: 50%;
+    background: rgba(255,255,255,0.85); box-shadow: 0 0 0 2px rgba(0,0,0,0.35);
+    pointer-events: none;
+  }
+  #lockhint {
+    position: fixed; bottom: 54px; left: 50%; transform: translateX(-50%); z-index: 17;
+    color: #eaf0ff; font-size: 13px; letter-spacing: 1px; pointer-events: none;
+    background: rgba(8,10,18,0.62); border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 18px; transition: opacity .3s; animation: pulse 2s ease-in-out infinite;
+  }
+  #lockhint.hide { opacity: 0; }
+  #lockhint b { color: #ffd479; }
+  @keyframes pulse { 0%,100% { opacity: .7; } 50% { opacity: 1; } }
+
   @media (max-width: 720px) {
     #sidebar { display: none; }
     #detail { width: min(92vw, 380px); right: 50%; transform: translate(50%, 30px); top: auto; bottom: 70px; }
@@ -199,13 +216,14 @@
 <div id="intro">
   <div class="card panel">
     <h2>WELCOME, TRAVELLER</h2>
-    <p>Ahead of you sits a little Minecraft house on a floating island. Inside, its
-       hallway is lined with the video games that changed everything.</p>
-    <p><b>Scroll</b> to walk through the door and deeper down the hall — a new game
-       poster greets you at every step. Click one to read its story.</p>
+    <p>Inside this Minecraft house, on a floating island, a torch-lit hall is hung
+       with the video games that changed everything.</p>
+    <p><b>Walk</b> the hall with <b>WASD</b> or the arrow keys, <b>click</b> to look
+       around, and <b>click a poster</b> to read what the game is, who made it, and
+       when it began.</p>
     <div class="keys">
-      <span><b>Scroll</b> to walk inside</span>
-      <span><b>Move mouse</b> to look</span>
+      <span><b>WASD</b> / Arrows to move</span>
+      <span><b>Click</b> to look around</span>
       <span><b>Click</b> a poster</span>
       <span><b>Esc</b> to close a card</span>
     </div>
@@ -213,8 +231,12 @@
   </div>
 </div>
 
+<!-- Crosshair + look prompt -->
+<div id="crosshair"></div>
+<div id="lockhint">Click to look around · <b>WASD</b> / Arrows to move</div>
+
 <!-- Hint -->
-<div id="hint">Scroll to walk deeper into the house →</div>
+<div id="hint"><b>WASD</b> / Arrows to move · Click to look · Click a poster to read</div>
 
 <!-- Three.js via importmap (ES modules, no build step) -->
 <script type="importmap">
@@ -523,15 +545,25 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.appendChild(renderer.domElement);
 
-// Navigation is scroll-driven (see the camera path in section [7]); no OrbitControls.
+// Navigation is first-person (WASD / arrows + mouse-look); see section [7].
 
-// daylight: soft ambient + sky/ground hemisphere + a warm directional "sun"
-scene.add(new THREE.AmbientLight(0xb9d4ff, 0.55));
-scene.add(new THREE.HemisphereLight(0xcfeaff, 0x5f7d3a, 0.75));
-const SUN_DIR = new THREE.Vector3(40, 58, 22);
-const sunLight = new THREE.DirectionalLight(0xfff3d0, 1.15); sunLight.position.copy(SUN_DIR); scene.add(sunLight);
+// soft daylight fill + a warm, shadow-casting sun. Inside, torches & lanterns
+// (real point lights) do the lighting, so the interior feels cosy, not flat.
+scene.add(new THREE.AmbientLight(0xa9c4ef, 0.34));
+scene.add(new THREE.HemisphereLight(0xbfe0ff, 0x4f6a35, 0.5));
+const SUN_DIR = new THREE.Vector3(46, 70, 30);
+const sunLight = new THREE.DirectionalLight(0xfff1cf, 1.25);
+sunLight.position.copy(SUN_DIR);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.bias = -0.0006;
+const sc = sunLight.shadow.camera;
+sc.near = 1; sc.far = 240; sc.left = sc.bottom = -64; sc.right = sc.top = 64;
+scene.add(sunLight);
 
 /* ---------------------------------------------------------------------------
    MINECRAFT BLOCK WORLD — a bright sky, a floating voxel island, trees,
@@ -564,6 +596,8 @@ const TEX = {
   leaves:   pixelTex("#3f8f33", ["#357a2b", "#4aa33b", "#2e6b25"], { density: 64 }),
   grassSide:pixelTex("#7a5230", ["#6b4527","#895c36"], { draw:(x,S)=>{ x.fillStyle="#5fa83a"; x.fillRect(0,0,S,4); for(let i=0;i<10;i++){x.fillStyle="#4f9230";x.fillRect((Math.random()*S)|0,(Math.random()*4)|0,1,1);} } }),
   planks:   pixelTex("#b07d44", ["#9c6b39","#c08a50","#a5743e"], { draw:(x,S)=>{ x.fillStyle="#7a5230"; for(let i=0;i<S;i+=4) x.fillRect(0,i,S,1); for(let i=3;i<S;i+=8) x.fillRect(i,0,1,4); for(let i=7;i<S;i+=8) x.fillRect(i,4,1,4);} }),
+  brick:    pixelTex("#8a8d92", ["#7c7f84","#9aa0a6","#6f7277"], { draw:(x,S)=>{ x.fillStyle="#5f6266"; for(let j=0;j<S;j+=4) x.fillRect(0,j,S,1); for(let j=0;j<S;j+=8) x.fillRect(8,j,1,4); for(let j=4;j<S;j+=8) x.fillRect(0,j,1,4);} }),
+  book:     pixelTex("#5a3c1c", ["#4a3016"], { draw:(x,S)=>{ const cols=["#b23b3b","#3b6cb2","#3bb24f","#c9a23b","#7a3bb2","#c08a50"]; for(const sy of [1,9]){ for(let i=0;i<S;i+=2){ x.fillStyle=cols[(Math.random()*cols.length)|0]; x.fillRect(i,sy,2,6);} } x.fillStyle="#3a2712"; x.fillRect(0,0,S,1); x.fillRect(0,8,S,1); x.fillRect(0,15,S,1);} }),
 };
 const lam = (map) => new THREE.MeshLambertMaterial({ map });
 // BoxGeometry face order: +x, -x, +y(top), -y(bottom), +z, -z
@@ -571,6 +605,8 @@ const grassMats = [lam(TEX.grassSide), lam(TEX.grassSide), lam(TEX.grassTop), la
 const dirtMat = lam(TEX.dirt), stoneMat = lam(TEX.stone), woodMat = lam(TEX.wood), leafMat = lam(TEX.leaves);
 const plankMat = lam(TEX.planks);
 const glassMat = new THREE.MeshLambertMaterial({ color: 0xaad8ff, transparent: true, opacity: 0.34 });
+const brickMat = lam(TEX.brick);
+const bookMat  = lam(TEX.book);
 
 // gradient sky dome
 const sky = new THREE.Mesh(
@@ -590,6 +626,10 @@ sunMesh.position.copy(SUN_DIR).multiplyScalar(2.6); scene.add(sunMesh);
 
 const boxGeo = new THREE.BoxGeometry(B, B, B);
 
+// ---- house footprint (declared first so the terrain can flatten under it) ----
+const HX0=-22, HX1=22, HZ0=-9, HZ1=9, HWALL=6;   // a big hall
+const inFoot = (bx,bz,m=0) => (bx>=HX0-m && bx<=HX1+m && bz>=HZ0-m && bz<=HZ1+m);
+
 // ---- generate the floating voxel island ----
 const RING_BLOCKS = Math.round((RING + 3) / B);  // flat plaza radius (blocks)
 const ISLAND_R = 30;                              // island radius (blocks)
@@ -600,7 +640,7 @@ function noise(x, z){
   const a=hash(xi,zi), b=hash(xi+1,zi), c=hash(xi,zi+1), d=hash(xi+1,zi+1);
   return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v;
 }
-const grassXf=[], dirtXf=[], stoneXf=[], woodXf=[], leafXf=[], plankXf=[], glassXf=[];
+const grassXf=[], dirtXf=[], stoneXf=[], woodXf=[], leafXf=[], plankXf=[], glassXf=[], brickXf=[], bookXf=[];
 const dummy = new THREE.Object3D();
 function pushBlock(arr, bx, by, bz){
   dummy.position.set(bx*B, by*B - B/2, bz*B);
@@ -616,9 +656,10 @@ for (let bx=-ISLAND_R; bx<=ISLAND_R; bx++) for (let bz=-ISLAND_R; bz<=ISLAND_R; 
     const ramp = Math.min(1, (dist - RING_BLOCKS) / 3);   // ease up out of the plaza
     top = Math.round(noise(bx*0.16 + 10, bz*0.16 + 10) * 4 * ramp);
   }
+  if (inFoot(bx, bz, 3)) top = 0;                          // flatten the ground around the house
   heightAt.set(bx + "," + bz, top);
-  const underHouse = (bx >= -17 && bx <= 17 && bz >= -5 && bz <= 5); // the house lays its own floor here
-  const depth = 2 + Math.floor((1 - d) * 9);              // rounded underside (deepest at centre)
+  const underHouse = inFoot(bx, bz, 0);                    // the house lays its own floor here
+  const depth = 2 + Math.floor((1 - d) * 7);              // rounded underside (deepest at centre)
   for (let y = top; y >= top - depth; y--){
     if (y === top) { if (!underHouse) pushBlock(grassXf, bx, y, bz); }
     else if (y >= top - 3) pushBlock(dirtXf, bx, y, bz);
@@ -630,7 +671,7 @@ let seed = 7;
 const rnd = () => (seed = (seed*9301 + 49297) % 233280) / 233280;
 for (let bx=-ISLAND_R; bx<=ISLAND_R; bx++) for (let bz=-ISLAND_R; bz<=ISLAND_R; bz++){
   const dist = Math.hypot(bx, bz);
-  if (dist < RING_BLOCKS + 4 || dist > ISLAND_R - 2 || rnd() > 0.012) continue;
+  if (inFoot(bx, bz, 2) || dist > ISLAND_R - 2 || rnd() > 0.014) continue;
   const base = heightAt.get(bx + "," + bz); if (base === undefined) continue;
   const th = 3 + (rnd()*2|0);
   for (let y=base+1; y<=base+th; y++) pushBlock(woodXf, bx, y, bz);
@@ -643,28 +684,33 @@ for (let bx=-ISLAND_R; bx<=ISLAND_R; bx++) for (let bz=-ISLAND_R; bz<=ISLAND_R; 
   }
 }
 
-// ---- a Minecraft house (same block family) the camera scrolls into ----
-// A long hall along X: stone foundation, plank walls, log corners, glass
-// windows, a flat roof, and a doorway at the front (-X) end.
-const HX0=-17, HX1=17, HZ0=-5, HZ1=5, HWALL=5;
+// ---- a big Minecraft house (same block family) with a furnished interior ----
+// Brick foundation, plank walls, log corners, high glass windows, a flat roof
+// with a ridge beam, and a wide doorway at the front (-X) end.
 const isPerim = (bx,bz) => (bx===HX0 || bx===HX1 || bz===HZ0 || bz===HZ1);
 for (let bx=HX0; bx<=HX1; bx++) for (let bz=HZ0; bz<=HZ1; bz++){
   if (!isPerim(bx,bz)) { pushBlock(plankXf, bx, 0, bz); continue; }       // interior plank floor
-  pushBlock(stoneXf, bx, 0, bz);                                          // stone foundation
+  pushBlock(brickXf, bx, 0, bz);                                          // stone-brick foundation
   const corner = (bx===HX0||bx===HX1) && (bz===HZ0||bz===HZ1);
   for (let by=1; by<=HWALL; by++){
     if (bx===HX0 && Math.abs(bz)<=1 && by<=4) continue;                   // front doorway
-    if ((bz===HZ0||bz===HZ1) && (Math.abs(bx)%2===1) && (by===2||by===3)){ pushBlock(glassXf, bx, by, bz); continue; } // windows
+    const onLong = (bz===HZ0 || bz===HZ1);
+    if (onLong && (Math.abs(bx)%4===2) && (by===4 || by===5)) { pushBlock(glassXf, bx, by, bz); continue; } // high windows
     pushBlock(corner ? woodXf : plankXf, bx, by, bz);                     // log corners + plank walls
   }
 }
-for (let bx=HX0; bx<=HX1; bx++) for (let bz=HZ0; bz<=HZ1; bz++)           // flat roof
-  pushBlock(isPerim(bx,bz) ? stoneXf : plankXf, bx, HWALL+1, bz);
+for (let bx=HX0; bx<=HX1; bx++) for (let bz=HZ0; bz<=HZ1; bz++)           // roof (plank, brick rim)
+  pushBlock(isPerim(bx,bz) ? brickXf : plankXf, bx, HWALL+1, bz);
+for (let bx=HX0; bx<=HX1; bx++) pushBlock(woodXf, bx, HWALL+2, 0);        // ridge beam
+// bookshelves stacked in the four corners
+for (const sx of [HX0+1, HX1-1]) for (const sz of [HZ0+1, HZ1-1])
+  for (let by=1; by<=3; by++) pushBlock(bookXf, sx, by, sz);
 
-function instanced(mats, xfs){
+function instanced(mats, xfs, shadows = true){
   const im = new THREE.InstancedMesh(boxGeo, mats, xfs.length);
   xfs.forEach((m,i)=> im.setMatrixAt(i, m));
   im.instanceMatrix.needsUpdate = true; im.frustumCulled = false;
+  im.castShadow = shadows; im.receiveShadow = true;
   scene.add(im); return im;
 }
 instanced(grassMats, grassXf);
@@ -673,15 +719,66 @@ instanced(stoneMat, stoneXf);
 instanced(woodMat, woodXf);
 instanced(leafMat, leafXf);
 instanced(plankMat, plankXf);
-instanced(glassMat, glassXf);
+instanced(glassMat, glassXf, false);   // glass casts no shadow → light pours through the windows
+instanced(brickMat, brickXf);
+instanced(bookMat, bookXf);
 
-// warm glowstone lanterns on the ceiling for a cosy interior glow
-const lampMat = new THREE.MeshLambertMaterial({ color: 0xffe2a0, emissive: 0xffb845 });
-[-12, -4, 4, 12].forEach(lx => {
-  const lamp = new THREE.Mesh(boxGeo, lampMat);
-  lamp.position.set(lx*B, 5*B - B*0.5, 0); scene.add(lamp);
-  const pl = new THREE.PointLight(0xffd9a0, 7, 22); pl.position.set(lx*B, 5*B - B, 0); scene.add(pl);
+/* ---- interior furnishings + cosy lighting (torches you walk among) ---- */
+const torches = [];   // flickering torch lights, animated in the loop
+function addLight(x, y, z, color, intensity, dist){
+  const l = new THREE.PointLight(color, intensity, dist, 2);
+  l.position.set(x, y, z); scene.add(l); return l;
+}
+// red carpet runner with a gold trim down the centre of the hall
+const runLen = (HX1 - HX0 - 2) * B;
+const carpet = new THREE.Mesh(new THREE.BoxGeometry(runLen, 0.08, 4.4*B), new THREE.MeshLambertMaterial({ color: 0x9e2b2b }));
+carpet.position.set(0, 0.05, 0); carpet.receiveShadow = true; scene.add(carpet);
+[-1, 1].forEach(s => {
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(runLen, 0.09, 0.3*B), new THREE.MeshLambertMaterial({ color: 0xd8b24a }));
+  trim.position.set(0, 0.05, s * 2.1 * B); scene.add(trim);
 });
+// wall torches between the posters (warm, flickering)
+const torchStickMat = new THREE.MeshLambertMaterial({ color: 0x5c3d1c });
+const flameMat = new THREE.MeshBasicMaterial({ color: 0xffd27a });
+function addTorch(x, z, faceIn, withLight){
+  const g = new THREE.Group(); g.position.set(x, 3.5*B, z);
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.95, 0.16), torchStickMat));
+  const flame = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.34), flameMat); flame.position.y = 0.62; g.add(flame);
+  scene.add(g);
+  if (withLight) torches.push({ light: addLight(x, 4.0*B, z + faceIn*0.7, 0xffb158, 9, 17), base: 9, flame });
+  else torches.push({ light: null, flame });
+}
+for (let bx=-18; bx<=18; bx+=6){
+  const lit = (bx % 12 === 0);                                   // light at -12, 0, 12
+  addTorch(bx*B, (HZ1 - 0.5)*B - 0.05, -1, lit);                 // north wall
+  addTorch(bx*B, (HZ0 + 0.5)*B + 0.05,  1, lit);                 // south wall
+}
+// glowstone chandeliers hanging down the centre
+const lampMat = new THREE.MeshLambertMaterial({ color: 0xffe2a0, emissive: 0xffb845 });
+for (const bx of [-14, -7, 0, 7, 14]){
+  const chain = new THREE.Mesh(new THREE.BoxGeometry(0.12, B, 0.12), torchStickMat);
+  chain.position.set(bx*B, HWALL*B + 0.2, 0); scene.add(chain);
+  const lamp = new THREE.Mesh(new THREE.BoxGeometry(B*0.7, B*0.5, B*0.7), lampMat);
+  lamp.position.set(bx*B, (HWALL-0.7)*B, 0); scene.add(lamp);
+  if (Math.abs(bx) !== 7) addLight(bx*B, (HWALL-1)*B, 0, 0xffd6a0, 9, 26);   // light at -14, 0, 14
+}
+// reading tables flanking the entrance
+function addTable(x, z){
+  const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.25, 1.3), plankMat);
+  top.position.set(x, 1.4, z); top.castShadow = top.receiveShadow = true; scene.add(top);
+  [[-0.8,-0.5],[0.8,-0.5],[-0.8,0.5],[0.8,0.5]].forEach(o=>{
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.4, 0.2), torchStickMat);
+    leg.position.set(x+o[0], 0.7, z+o[1]); leg.castShadow = true; scene.add(leg);
+  });
+}
+addTable((HX0+5)*B, 4*B); addTable((HX0+5)*B, -4*B);
+// potted saplings flanking the door
+function addPlant(x, z){
+  const pot = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.7,0.7), brickMat); pot.position.set(x,0.45,z); pot.castShadow=true; scene.add(pot);
+  const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.25,1.0,0.25), woodMat); trunk.position.set(x,1.3,z); scene.add(trunk);
+  const leaves = new THREE.Mesh(new THREE.BoxGeometry(1.3,1.3,1.3), leafMat); leaves.position.set(x,2.2,z); leaves.castShadow=true; scene.add(leaves);
+}
+addPlant((HX0+1.5)*B, -1.7*B); addPlant((HX0+1.5)*B, 1.7*B);
 
 // drifting flat clouds (clusters of stretched white blocks)
 const clouds = [];
@@ -709,18 +806,17 @@ for (let i=0; i<14; i++){
    ============================================================================ */
 const PW = 3.0, PH = 4.0;          // poster width / height
 const POSTER_Y = 3.0 * B;          // poster centre height
-const WALL_IN  = 4.45 * B;         // distance of the poster plane from the hall centre (z)
-const EYE_Y    = 3.2 * B;          // camera eye height inside the hall
+const WALL_IN  = (HZ1 - 0.5) * B - 0.06;  // poster plane just inside the long wall
+const EYE_Y    = 2.7 * B;          // first-person eye height inside the hall
 const exhibits = [];               // { group, art, frame, light, hover, station }
 const pickables = [];              // meshes the raycaster tests
 const covers = [];                 // data-URLs for the HTML card
 
 function buildExhibits() {
   GAMES.forEach((game, i) => {
-    const bx = -14 + i * 2;        // block x along the hall
-    const north = (i % 2 === 0);   // alternate which wall the poster hangs on
+    const north = (i % 2 === 0);      // alternate which long wall the poster hangs on
     const side = north ? 1 : -1;
-    const px = bx * B;
+    const px = (-18 + i * 2.4) * B;   // spread evenly along the hall
     const pz = side * WALL_IN;
 
     const group = new THREE.Group();
@@ -731,33 +827,26 @@ function buildExhibits() {
     // wooden frame against the wall
     const frame = new THREE.Mesh(
       new THREE.BoxGeometry(PW + 0.35, PH + 0.35, 0.16),
-      new THREE.MeshStandardMaterial({ color: 0x3a2713, emissive: new THREE.Color(game.a), emissiveIntensity: 0.3, roughness: 0.7 })
+      new THREE.MeshStandardMaterial({ color: 0x3a2713, emissive: new THREE.Color(game.a), emissiveIntensity: 0.32, roughness: 0.7 })
     );
     group.add(frame);
 
-    // the artwork
+    // the artwork (unlit so it stays bright in the cosy interior)
     const cover = makeCover(game);
     covers[i] = cover.toDataURL("image/png");
     const tex = new THREE.CanvasTexture(cover);
     tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-    const art = new THREE.Mesh(
-      new THREE.PlaneGeometry(PW, PH),
-      new THREE.MeshBasicMaterial({ map: tex })
-    );
+    const art = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: tex }));
     art.position.z = 0.10; group.add(art);
-
-    // accent light washing the poster
-    const light = new THREE.PointLight(new THREE.Color(game.a), 4, 11, 2);
-    light.position.set(0, 0, 1.6); group.add(light);
 
     [frame, art].forEach(m => { m.userData.index = i; pickables.push(m); });
 
-    // camera station: stand slightly toward the opposite wall, looking at this poster
+    // where to stand (and look) when you jump here from the sidebar
     const station = {
-      pos: new THREE.Vector3(px, EYE_Y, -side * 1.4 * B),
-      look: new THREE.Vector3(px, POSTER_Y, pz),
+      pos: new THREE.Vector3(px, EYE_Y, side * (WALL_IN - 4.2)),
+      look: new THREE.Vector3(px, POSTER_Y - 0.2, pz),
     };
-    exhibits.push({ group, art, frame, light, hover: 0, station });
+    exhibits.push({ group, art, frame, hover: 0, station });
   });
 }
 
@@ -770,55 +859,48 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.
 composer.addPass(bloom);
 
 /* ============================================================================
-   [7] INTERACTION — SCROLL TO WALK INTO THE HOUSE
-   The camera follows a path: it starts outside the door and, as you scroll,
-   glides station-to-station deeper down the hall, turning to face each poster.
+   [7] INTERACTION — FIRST-PERSON MOVEMENT (walk around the house)
+   WASD / arrow keys move you; click to capture the mouse and look around.
+   Click the poster in your crosshair to open its story card.
    ============================================================================ */
 const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2(0, 0);
-let hovered = -1;                 // poster under the cursor
-const easeInOut = x => x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+const centre = new THREE.Vector2(0, 0);
+let hovered = -1;
 
-// The scroll path is built in boot() once the posters exist.
-let PATH = [];
-let scrollPos = 0, scrollTarget = 0;   // float index along PATH
-const tmpLook = new THREE.Vector3();
+// player state
+const player = { pos: new THREE.Vector3((HX0 + 3) * B, EYE_Y, 0), yaw: -Math.PI / 2, pitch: 0 };
+const lookEuler = new THREE.Euler(0, 0, 0, "YXZ");
+const keys = {};
+let locked = false;
+const dom = renderer.domElement;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-function buildPath() {
-  PATH = [];
-  // entry: standing outside the front doorway, looking in
-  PATH.push({ pos: new THREE.Vector3(-28, EYE_Y + 0.5, 0), look: new THREE.Vector3(-14 * B, POSTER_Y, 0) });
-  exhibits.forEach(e => PATH.push({ pos: e.station.pos, look: e.station.look }));
-  // exit: deep at the back of the hall, looking at the far wall
-  PATH.push({ pos: new THREE.Vector3(15 * B, EYE_Y, 0), look: new THREE.Vector3(17 * B, POSTER_Y, 0) });
-}
-const pathMax = () => PATH.length - 1;
-// station index 1..N corresponds to game (index - 1)
-const stationToGame = idx => (idx >= 1 && idx <= GAMES.length) ? idx - 1 : -1;
+// interior bounds the player is kept inside (so you can't walk through walls)
+const PR = 0.7 * B;
+const xMin = (HX0 + 0.5) * B + PR, xMax = (HX1 - 0.5) * B - PR;
+const zMin = (HZ0 + 0.5) * B + PR, zMax = (HZ1 - 0.5) * B - PR;
 
-// scroll / wheel drives forward & backward travel
-addEventListener("wheel", e => {
-  e.preventDefault();
-  scrollTarget = Math.max(0, Math.min(pathMax(), scrollTarget + e.deltaY * 0.0035));
-}, { passive: false });
+// pointer lock for mouse-look; while locked, a click selects the poster ahead
+const lockHint = document.getElementById("lockhint");
+dom.addEventListener("click", () => {
+  if (!locked) { dom.requestPointerLock(); return; }
+  raycaster.setFromCamera(centre, camera);
+  const hit = raycaster.intersectObjects(pickables, false)[0];
+  if (hit) showDetail(hit.object.userData.index);
+});
+document.addEventListener("pointerlockchange", () => {
+  locked = document.pointerLockElement === dom;
+  lockHint.classList.toggle("hide", locked);
+});
+document.addEventListener("mousemove", e => {
+  if (!locked) return;
+  player.yaw   -= e.movementX * 0.0022;
+  player.pitch  = clamp(player.pitch - e.movementY * 0.0022, -1.4, 1.4);
+});
+addEventListener("keydown", e => { keys[e.code] = true; if (e.code === "Escape") hideDetail(); });
+addEventListener("keyup",   e => { keys[e.code] = false; });
 
-// touch drag (vertical) also travels, for mobile
-let touchY = null;
-addEventListener("touchstart", e => { touchY = e.touches[0].clientY; }, { passive: true });
-addEventListener("touchmove", e => {
-  if (touchY === null) return;
-  const dy = touchY - e.touches[0].clientY; touchY = e.touches[0].clientY;
-  scrollTarget = Math.max(0, Math.min(pathMax(), scrollTarget + dy * 0.02));
-}, { passive: true });
-addEventListener("touchend", () => { touchY = null; });
-
-function gotoGame(i) {
-  scrollTarget = i + 1;                       // station index for game i
-  showDetail(i);
-  document.querySelectorAll(".item").forEach((el, k) => el.classList.toggle("active", k === i));
-}
-
-// --- detail card population ---
+// --- detail card ---
 const detail = document.getElementById("detail");
 function showDetail(i) {
   const g = GAMES[i];
@@ -829,6 +911,8 @@ function showDetail(i) {
   detail.querySelector(".dev").textContent = g.dev;
   detail.querySelector(".desc").textContent = g.desc;
   detail.classList.add("show");
+  document.querySelectorAll(".item").forEach((el, k) => el.classList.toggle("active", k === i));
+  if (locked) document.exitPointerLock();   // free the cursor to read / click the card
 }
 function hideDetail() {
   detail.classList.remove("show");
@@ -836,28 +920,15 @@ function hideDetail() {
 }
 detail.querySelector(".close").addEventListener("click", hideDetail);
 
-// --- pointer handling: click a poster to open its card; move for parallax ---
-let downX = 0, downY = 0, downT = 0;
-renderer.domElement.addEventListener("pointerdown", e => { downX = e.clientX; downY = e.clientY; downT = performance.now(); });
-renderer.domElement.addEventListener("pointerup", e => {
-  const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
-  if (moved < 6 && performance.now() - downT < 400) {
-    raycaster.setFromCamera(mouse, camera);
-    const hit = raycaster.intersectObjects(pickables, false)[0];
-    if (hit) gotoGame(hit.object.userData.index);
-    else hideDetail();
-  }
-});
-renderer.domElement.addEventListener("pointermove", e => {
-  mouse.x = (e.clientX / innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
-});
-
-addEventListener("keydown", e => {
-  if (e.key === "Escape") hideDetail();
-  if (e.key === "ArrowDown" || e.key === "ArrowRight") scrollTarget = Math.min(pathMax(), scrollTarget + 1);
-  if (e.key === "ArrowUp"   || e.key === "ArrowLeft")  scrollTarget = Math.max(0, scrollTarget - 1);
-});
+// jump to a game from the sidebar: teleport in front of its poster and face it
+function gotoGame(i) {
+  const e = exhibits[i];
+  player.pos.copy(e.station.pos);
+  const d = e.station.look.clone().sub(e.station.pos);
+  player.yaw = Math.atan2(-d.x, -d.z);
+  player.pitch = Math.asin(clamp(d.y / d.length(), -1, 1));
+  showDetail(i);
+}
 
 // --- sidebar list ---
 const listEl = document.getElementById("list");
@@ -874,7 +945,7 @@ GAMES.forEach((g, i) => {
    ============================================================================ */
 const clock = new THREE.Clock();
 
-let lastPoster = -2;
+let lastFocus = -2;
 const hintEl = document.getElementById("hint");
 
 function animate() {
@@ -882,44 +953,47 @@ function animate() {
   const dt = clock.getDelta();
   const t = clock.elapsedTime;
 
-  // ease the scroll position toward the target, then place the camera on the path
-  if (PATH.length > 1) {
-    scrollPos += (scrollTarget - scrollPos) * Math.min(1, dt * 3.2);
-    const seg = Math.max(0, Math.min(PATH.length - 2, Math.floor(scrollPos)));
-    const f = easeInOut(Math.max(0, Math.min(1, scrollPos - seg)));
-    const a = PATH[seg], b = PATH[seg + 1];
-    camera.position.lerpVectors(a.pos, b.pos, f);
-    tmpLook.lerpVectors(a.look, b.look, f);
-    // gentle mouse parallax
-    camera.position.x += mouse.x * 0.5;
-    camera.position.y += -mouse.y * 0.35;
-    camera.lookAt(tmpLook);
+  // --- first-person movement ---
+  const fwd   = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const right = new THREE.Vector3( Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  const move = new THREE.Vector3();
+  if (keys.KeyW || keys.ArrowUp)    move.add(fwd);
+  if (keys.KeyS || keys.ArrowDown)  move.sub(fwd);
+  if (keys.KeyD || keys.ArrowRight) move.add(right);
+  if (keys.KeyA || keys.ArrowLeft)  move.sub(right);
+  if (move.lengthSq() > 0) { move.normalize().multiplyScalar(7 * dt); player.pos.add(move); }
+  player.pos.x = clamp(player.pos.x, xMin, xMax);
+  player.pos.z = clamp(player.pos.z, zMin, zMax);
+  camera.position.copy(player.pos);
+  lookEuler.set(player.pitch, player.yaw, 0);
+  camera.quaternion.setFromEuler(lookEuler);
 
-    // which poster are we closest to?
-    const cur = stationToGame(Math.round(scrollPos));
-    if (cur !== lastPoster) {
-      lastPoster = cur;
-      hintEl.innerHTML = cur >= 0
-        ? `<b style="color:${GAMES[cur].a}">${GAMES[cur].title}</b> · ${GAMES[cur].year} — click the poster to read its story`
-        : `Scroll to walk deeper into the house →`;
-    }
+  // which poster is in the crosshair?
+  raycaster.setFromCamera(centre, camera);
+  const hit = raycaster.intersectObjects(pickables, false)[0];
+  const focus = hit ? hit.object.userData.index : -1;
+  hovered = focus;
+  if (focus !== lastFocus) {
+    lastFocus = focus;
+    hintEl.innerHTML = focus >= 0
+      ? `<b style="color:${GAMES[focus].a}">${GAMES[focus].title}</b> · ${GAMES[focus].year} — click to read its story`
+      : `<b>WASD</b> / Arrows to move · Click to look · Click a poster to read`;
   }
 
-  // hover highlight for the cursor
-  raycaster.setFromCamera(mouse, camera);
-  const hit = raycaster.intersectObjects(pickables, false)[0];
-  const hov = hit ? hit.object.userData.index : -1;
-  if (hov !== hovered) { hovered = hov; renderer.domElement.style.cursor = hov >= 0 ? "pointer" : "default"; }
-
-  // posters: emphasise the one we're at / hovering
-  const focusIdx = stationToGame(Math.round(scrollPos));
+  // posters: emphasise the one in the crosshair
   exhibits.forEach((e, i) => {
-    const want = (i === hovered || i === focusIdx) ? 1 : 0;
+    const want = (i === hovered) ? 1 : 0;
     e.hover += (want - e.hover) * Math.min(1, dt * 6);
     e.group.scale.setScalar(1 + e.hover * 0.05);
-    e.light.intensity = 4 + e.hover * 9;
-    e.frame.material.emissiveIntensity = 0.3 + e.hover * 1.1;
+    e.frame.material.emissiveIntensity = 0.32 + e.hover * 1.2;
   });
+
+  // torch flicker
+  for (const tk of torches) {
+    const f = 0.82 + 0.18 * Math.sin(t * 11 + tk.flame.parent.position.x) + 0.1 * Math.random();
+    if (tk.light) tk.light.intensity = tk.base * f;
+    tk.flame.scale.setScalar(0.85 + 0.3 * Math.random());
+  }
 
   // drifting clouds
   clouds.forEach(g => { g.position.x += dt * g.userData.speed; if (g.position.x > 140) g.position.x = -140; });
@@ -939,10 +1013,10 @@ addEventListener("resize", () => {
 async function boot() {
   try { await document.fonts.ready; } catch (_) {}
   buildExhibits();
-  buildPath();
-  // start the camera at the entry, outside the door
-  camera.position.copy(PATH[0].pos);
-  camera.lookAt(PATH[0].look);
+  // place the camera at the player's spawn just inside the doorway
+  camera.position.copy(player.pos);
+  lookEuler.set(player.pitch, player.yaw, 0);
+  camera.quaternion.setFromEuler(lookEuler);
   animate();
   setTimeout(() => document.getElementById("loader").classList.add("hide"), 350);
 }

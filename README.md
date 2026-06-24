@@ -10,19 +10,19 @@ self-contained and runs in a browser.
 ## ⭐ Featured: Hall of Legends
 
 [**`hall-of-legends.html`**](hall-of-legends.html) — a **3D Minecraft house you
-scroll through**, built with Three.js and set on a floating voxel island
-(inspired by the Minecraft-folio style of Andrew Woan / JReyes). **Scroll** to
-walk through the front door and glide deeper down the hallway — a new game poster
-greets you at every step, telling you what the game is, who made it, and the year
-it arrived. 16 legends span five decades — from *Pong* (1972) to *Among Us* (2018).
+walk through in first person**, built with Three.js and set on a floating voxel
+island (inspired by the Minecraft-folio style of Andrew Woan / JReyes). Stroll a
+torch-lit, carpeted hall with **WASD / arrow keys**, **click to look around**, and
+**click a poster** to read what each game is, who made it, and the year it arrived.
+16 legends span five decades — from *Pong* (1972) to *Among Us* (2018).
 
 <table>
   <tr>
-    <td width="58%"><img src="docs/img/house-entry.png" alt="Looking down a plank-walled Minecraft hallway lined with glowing-framed game posters, a glowstone lantern overhead" /></td>
-    <td width="42%"><img src="docs/img/house-poster.png" alt="The camera arrived at the Sonic poster with a detail card showing year, genre and description" /></td>
+    <td width="58%"><img src="docs/img/house-spawn.png" alt="First-person view down a big plank-walled Minecraft hall: a red-and-gold carpet runner, glowing chandeliers, and game posters on both walls" /></td>
+    <td width="42%"><img src="docs/img/house-card.png" alt="Standing before the Pokémon poster with a detail card showing year, studio and description" /></td>
   </tr>
   <tr>
-    <td align="center">Scroll deeper down the hall…</td>
+    <td align="center">Walk the torch-lit hall (WASD)…</td>
     <td align="center">…and click a poster for its story</td>
   </tr>
 </table>
@@ -31,11 +31,11 @@ it arrived. 16 legends span five decades — from *Pong* (1972) to *Among Us* (2
 
 - Pure Three.js loaded via an importmap from a CDN — no `npm install`, no bundler
 - A **fully procedural Minecraft world**: a floating island of `InstancedMesh` voxels (grass / dirt / stone with a rounded underside), a few oak trees, drifting blocky clouds and a gradient sky — all built from cubes
-- A **house made from the same blocks**: stone foundation, plank walls, log corners, glass windows, a flat roof, a front doorway, and warm glowstone lanterns inside
-- **Scroll-to-explore navigation** — the camera follows a path of "stations" from outside the door down the hall, turning to face each poster in turn (also works with arrow keys, touch-drag, or the sidebar)
+- A **big house made from the same blocks**: brick foundation, plank walls, log corners, glass windows, a ridged roof, a wide doorway — **furnished** with a carpet runner, hanging glowstone chandeliers, wall torches, corner bookshelves, tables and potted saplings
+- **First-person controls** — WASD / arrow keys to move, pointer-lock mouse-look, wall collision so you stay inside; or jump straight to any game from the sidebar
+- **Atmospheric lighting** — a shadow-casting sun plus warm, *flickering* torch and chandelier point lights for a cosy interior
 - 16 wall-mounted posters with **procedural cover art** drawn on a `<canvas>` — hand-coded iconic symbols (Pac-Man, the Space Invaders alien, a Tetris stack, a Pokéball, an Among Us crewmate…)
-- Pixel-art, nearest-filtered block textures with per-face Minecraft-style lighting
-- Click a poster (or a sidebar entry) for an HTML detail card; gentle mouse-move parallax; `Esc` to close
+- Pixel-art, nearest-filtered block textures; click a poster for an HTML detail card; `Esc` to close
 
 > ⚠️ Because it imports Three.js as ES modules from a CDN, open it via a local
 > server (e.g. `python -m http.server` then visit
